@@ -1,0 +1,23 @@
+{
+  "name": "aprez",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ApRez - Restaurant Reservation Platform for Romania",
+  "workspaces": {
+    "packages": [
+      "packages/*",
+      "server",
+      "apps/admin",
+      "apps/restaurant"
+    ]
+  },
+  "scripts": {
+    "dev:server": "cd server && npm run dev",
+    "dev:restaurant": "cd apps/restaurant && npm run dev",
+    "dev:admin": "cd apps/admin && npm run dev",
+    "build:server": "cd server && npm run build",
+    "build:restaurant": "cd apps/restaurant && npm run build",
+    "build:admin": "cd apps/admin && npm run build",
+    "dev:mobile": "cd apps/mobile && npx expo start"
+  }
+}

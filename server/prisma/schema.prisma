@@ -1,0 +1,439 @@
+// ApRez Database Schema
+// PostgreSQL via Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER ACCOUNTS (Diners)
+// ============================================
+
+model User {
+  id               String    @id @default(uuid())
+  phone            String?   @unique
+  email            String?   @unique
+  firstName        String    @map("first_name")
+  lastName         String    @map("last_name")
+  passwordHash     String?   @map("password_hash")
+  phoneVerified    Boolean   @default(false) @map("phone_verified")
+  latitude         Decimal?  @db.Decimal(10, 8)
+  longitude        Decimal?  @db.Decimal(11, 8)
+  preferredLanguage String   @default("ro") @map("preferred_language")
+  fcmToken         String?   @map("fcm_token")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  reservations     Reservation[]
+  waitlists        Waitlist[]
+  favorites        Favorite[]
+  bans             BannedUser[]
+  notifications    Notification[] @relation("UserNotifications")
+
+  @@map("users")
+}
+
+// ============================================
+// RESTAURANTS
+// ============================================
+
+model Restaurant {
+  id                    String    @id @default(uuid())
+  nameRo                String    @map("name_ro")
+  nameEn                String    @map("name_en")
+  descriptionRo         String?   @map("description_ro") @db.Text
+  descriptionEn         String?   @map("description_en") @db.Text
+  cuisineTypes          String[]  @map("cuisine_types")
+  address               String    @db.Text
+  latitude              Decimal   @db.Decimal(10, 8)
+  longitude             Decimal   @db.Decimal(11, 8)
+  googlePlaceId         String?   @map("google_place_id")
+  phone                 String
+  email                 String?
+  website               String?
+  menuPdfUrl            String?   @map("menu_pdf_url")
+  coverPhotoUrl         String?   @map("cover_photo_url")
+  maxPartySize          Int       @default(30) @map("max_party_size")
+  reservationDurationMin Int      @default(120) @map("reservation_duration_min")
+  autoConfirmEnabled    Boolean   @default(true) @map("auto_confirm_enabled")
+  autoConfirmMaxParty   Int       @default(4) @map("auto_confirm_max_party")
+  autoConfirmLeadHours  Int       @default(24) @map("auto_confirm_lead_hours")
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  photos                RestaurantPhoto[]
+  openingHours          OpeningHours[]
+  servicePeriods        ServicePeriod[]
+  disabledDates         DisabledDate[]
+  tableSections         TableSection[]
+  tables                RestaurantTable[]
+  reservations          Reservation[]
+  waitlists             Waitlist[]
+  favorites             Favorite[]
+  bans                  BannedUser[]
+  staff                 RestaurantStaff[]
+  billingReports        BillingReport[]
+  notifications         Notification[] @relation("RestaurantNotifications")
+
+  @@map("restaurants")
+}
+
+model RestaurantPhoto {
+  id             String     @id @default(uuid())
+  restaurantId   String     @map("restaurant_id")
+  photoUrl       String     @map("photo_url")
+  displayOrder   Int        @default(0) @map("display_order")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@map("restaurant_photos")
+}
+
+model OpeningHours {
+  id             String     @id @default(uuid())
+  restaurantId   String     @map("restaurant_id")
+  dayOfWeek      Int        @map("day_of_week") // 0=Monday, 6=Sunday
+  isOpen         Boolean    @default(true) @map("is_open")
+  openTime       String?    @map("open_time")  // "10:00"
+  closeTime      String?    @map("close_time") // "23:00"
+
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, dayOfWeek])
+  @@map("opening_hours")
+}
+
+model ServicePeriod {
+  id             String     @id @default(uuid())
+  restaurantId   String     @map("restaurant_id")
+  nameRo         String     @map("name_ro")
+  nameEn         String     @map("name_en")
+  startTime      String     @map("start_time") // "11:00"
+  endTime        String     @map("end_time")   // "15:00"
+  daysOfWeek     Int[]      @default([0, 1, 2, 3, 4, 5, 6]) @map("days_of_week") // 0=Mon..6=Sun, defaults to all days
+
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@map("service_periods")
+}
+
+model DisabledDate {
+  id             String     @id @default(uuid())
+  restaurantId   String     @map("restaurant_id")
+  date           DateTime   @db.Date
+  reason         String?
+
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, date])
+  @@map("disabled_dates")
+}
+
+// ============================================
+// TABLE LAYOUT SYSTEM
+// ============================================
+
+model TableSection {
+  id             String     @id @default(uuid())
+  restaurantId   String     @map("restaurant_id")
+  nameRo         String     @map("name_ro")
+  nameEn         String     @map("name_en")
+  gridRows       Int        @map("grid_rows")
+  gridColumns    Int        @map("grid_columns")
+  displayOrder   Int        @default(0) @map("display_order")
+
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tables         RestaurantTable[]
+
+  @@map("table_sections")
+}
+
+model RestaurantTable {
+  id             String     @id @default(uuid())
+  sectionId      String     @map("section_id")
+  restaurantId   String     @map("restaurant_id")
+  tableNumber    String     @map("table_number") // "T1", "T2"
+  seatCount      Int        @default(2) @map("seat_count")
+  gridRow        Int        @map("grid_row")
+  gridCol        Int        @map("grid_col")
+  status         TableStatus @default(FREE)
+  statusChangedAt DateTime? @map("status_changed_at")
+  isActive       Boolean    @default(true) @map("is_active")
+
+  section        TableSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  restaurant     Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  reservations   Reservation[]
+  tableMoves     TableMove[]  @relation("MovedTable")
+  mergedWith     TableMove[]  @relation("MergedWithTable")
+
+  @@unique([sectionId, gridRow, gridCol])
+  @@map("restaurant_tables")
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+  ARRIVING_SOON
+  AWAITING_GUEST
+  OUT_OF_SERVICE
+}
+
+model TableMove {
+  id                String    @id @default(uuid())
+  tableId           String    @map("table_id")
+  reservationId     String?   @map("reservation_id")
+  originalGridRow   Int       @map("original_grid_row")
+  originalGridCol   Int       @map("original_grid_col")
+  movedGridRow      Int       @map("moved_grid_row")
+  movedGridCol      Int       @map("moved_grid_col")
+  mergedWithTableId String?   @map("merged_with_table_id")
+  date              DateTime  @db.Date
+  timeStart         String    @map("time_start")
+  timeEnd           String    @map("time_end")
+  isActive          Boolean   @default(true) @map("is_active")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  table             RestaurantTable @relation("MovedTable", fields: [tableId], references: [id])
+  mergedWithTable   RestaurantTable? @relation("MergedWithTable", fields: [mergedWithTableId], references: [id])
+  reservation       Reservation?    @relation(fields: [reservationId], references: [id])
+
+  @@map("table_moves")
+}
+
+// ============================================
+// RESERVATION SYSTEM
+// ============================================
+
+model Reservation {
+  id               String             @id @default(uuid())
+  userId           String?            @map("user_id")
+  restaurantId     String             @map("restaurant_id")
+  tableId          String?            @map("table_id")
+  date             DateTime           @db.Date
+  time             String             // "19:00"
+  endTime          String             @map("end_time") // "21:00" (time + duration)
+  partySize        Int                @map("party_size")
+  actualPartySize  Int?               @map("actual_party_size")
+  status           ReservationStatus  @default(PENDING)
+  source           ReservationSource  @default(APP)
+  fromWaitlist     Boolean            @default(false) @map("from_waitlist")
+  guestName        String?            @map("guest_name")
+  guestPhone       String?            @map("guest_phone")
+  guestEmail       String?            @map("guest_email")
+  seatedAt         DateTime?          @map("seated_at")
+  cancelledAt      DateTime?          @map("cancelled_at")
+  cancelledBy      String?            @map("cancelled_by") // 'user', 'restaurant', 'system'
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  user             User?              @relation(fields: [userId], references: [id])
+  restaurant       Restaurant         @relation(fields: [restaurantId], references: [id])
+  table            RestaurantTable?   @relation(fields: [tableId], references: [id])
+  modifications    ReservationModification[]
+  tableMoves       TableMove[]
+
+  @@index([restaurantId, date])
+  @@index([userId])
+  @@map("reservations")
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  AUTO_CONFIRMED
+  MODIFICATION_PENDING
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum ReservationSource {
+  APP
+  MANUAL
+}
+
+model ReservationModification {
+  id                String    @id @default(uuid())
+  reservationId     String    @map("reservation_id")
+  requestedDate     DateTime? @map("requested_date") @db.Date
+  requestedTime     String?   @map("requested_time")
+  requestedPartySize Int?     @map("requested_party_size")
+  status            ModificationStatus @default(PENDING)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  resolvedAt        DateTime? @map("resolved_at")
+
+  reservation       Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@map("reservation_modifications")
+}
+
+enum ModificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ============================================
+// WAITLIST SYSTEM
+// ============================================
+
+model Waitlist {
+  id             String         @id @default(uuid())
+  userId         String         @map("user_id")
+  restaurantId   String         @map("restaurant_id")
+  date           DateTime       @db.Date
+  time           String         // "20:00"
+  partySize      Int            @map("party_size")
+  position       Int
+  status         WaitlistStatus @default(WAITING)
+  notifiedAt     DateTime?      @map("notified_at")
+  expiresAt      DateTime?      @map("expires_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  user           User           @relation(fields: [userId], references: [id])
+  restaurant     Restaurant     @relation(fields: [restaurantId], references: [id])
+
+  @@index([restaurantId, date, time])
+  @@map("waitlists")
+}
+
+enum WaitlistStatus {
+  WAITING
+  NOTIFIED
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+// ============================================
+// FAVORITES & BANS
+// ============================================
+
+model Favorite {
+  id             String     @id @default(uuid())
+  userId         String     @map("user_id")
+  restaurantId   String     @map("restaurant_id")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, restaurantId])
+  @@map("favorites")
+}
+
+model BannedUser {
+  id             String     @id @default(uuid())
+  userId         String     @map("user_id")
+  restaurantId   String     @map("restaurant_id")
+  bannedBy       String?    @map("banned_by")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, restaurantId])
+  @@map("banned_users")
+}
+
+// ============================================
+// RESTAURANT STAFF & ADMIN ACCOUNTS
+// ============================================
+
+model RestaurantStaff {
+  id             String     @id @default(uuid())
+  restaurantId   String     @map("restaurant_id")
+  username       String     @unique
+  passwordHash   String     @map("password_hash")
+  displayName    String     @map("display_name")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@map("restaurant_staff")
+}
+
+model AdminUser {
+  id             String     @id @default(uuid())
+  email          String     @unique
+  passwordHash   String     @map("password_hash")
+  name           String
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  auditLogs      AdminAuditLog[]
+
+  @@map("admin_users")
+}
+
+model AdminAuditLog {
+  id             String     @id @default(uuid())
+  adminUserId    String     @map("admin_user_id")
+  action         String     // 'created_restaurant', 'edited_profile', etc.
+  targetType     String     @map("target_type") // 'restaurant', 'table_section', etc.
+  targetId       String?    @map("target_id")
+  details        Json?
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  adminUser      AdminUser  @relation(fields: [adminUserId], references: [id])
+
+  @@map("admin_audit_log")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id             String     @id @default(uuid())
+  recipientType  String     @map("recipient_type") // 'user' or 'restaurant'
+  userId         String?    @map("user_id")
+  restaurantId   String?    @map("restaurant_id")
+  type           String     // 'reservation_confirmed', 'waitlist_available', etc.
+  titleRo        String     @map("title_ro")
+  titleEn        String     @map("title_en")
+  bodyRo         String     @map("body_ro") @db.Text
+  bodyEn         String     @map("body_en") @db.Text
+  channel        String     // 'push', 'sms', 'in_app'
+  isRead         Boolean    @default(false) @map("is_read")
+  sentAt         DateTime?  @map("sent_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  user           User?      @relation("UserNotifications", fields: [userId], references: [id])
+  restaurant     Restaurant? @relation("RestaurantNotifications", fields: [restaurantId], references: [id])
+
+  @@index([userId])
+  @@index([restaurantId])
+  @@map("notifications")
+}
+
+// ============================================
+// BILLING
+// ============================================
+
+model BillingReport {
+  id             String     @id @default(uuid())
+  restaurantId   String     @map("restaurant_id")
+  month          DateTime   @db.Date // First day of month
+  totalDiners    Int        @default(0) @map("total_diners")
+  amountOwedRon  Decimal    @default(0) @map("amount_owed_ron") @db.Decimal(10, 2)
+  paymentStatus  PaymentStatus @default(PENDING) @map("payment_status")
+  generatedAt    DateTime   @default(now()) @map("generated_at")
+  paidAt         DateTime?  @map("paid_at")
+
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id])
+
+  @@unique([restaurantId, month])
+  @@map("billing_reports")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}

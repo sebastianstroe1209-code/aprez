@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "ApRez",
+    "slug": "aprez",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#22c55e"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aprez.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "ApRez uses your location to find nearby restaurants."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#22c55e"
+      },
+      "package": "com.aprez.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "extra": {
+      "apiUrl": "http://localhost:4000"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-font"
+    ]
+  }
+}
