@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiGet, apiPut, apiPost } from '../../../lib/api'
+import { formatDate } from '../../../lib/format'
 
 const statusBadgeColor = {
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -236,7 +237,7 @@ export default function ReservationsPage() {
                   <tr key={res.id} className="border-b hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm">{res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'N/A')}</td>
                     <td className="px-6 py-4 text-sm">{res.guestPhone || res.user?.phone || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm">{new Date(res.date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-sm">{formatDate(res.date)}</td>
                     <td className="px-6 py-4 text-sm">{res.time}</td>
                     <td className="px-6 py-4 text-sm">{res.partySize}</td>
                     <td className="px-6 py-4 text-sm">

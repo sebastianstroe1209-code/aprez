@@ -8,7 +8,6 @@ export default function DashboardPage() {
     todayReservations: 0,
     pendingConfirmations: 0,
     currentOccupancy: 0,
-    waitlistSize: 0,
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -22,17 +21,15 @@ export default function DashboardPage() {
       setLoading(true)
       const today = new Date().toISOString().split('T')[0]
 
-      const [resData, pendingData, waitlistData] = await Promise.all([
+      const [resData, pendingData] = await Promise.all([
         apiGet(`/api/restaurant/reservations?date=${today}`),
         apiGet('/api/restaurant/reservations/pending'),
-        apiGet('/api/restaurant/waitlist'),
       ])
 
       setStats({
         todayReservations: resData.length,
         pendingConfirmations: pendingData.length,
         currentOccupancy: resData.filter(r => r.status === 'CONFIRMED' || r.status === 'AUTO_CONFIRMED').length,
-        waitlistSize: waitlistData.length,
       })
     } catch (err) {
       setError(err.message || 'Failed to load stats')
@@ -55,7 +52,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow p-6">
           <div className="text-gray-500 text-sm font-medium mb-2">Today's Reservations</div>
           <div className="text-4xl font-bold text-primary">{stats.todayReservations}</div>
@@ -72,12 +69,6 @@ export default function DashboardPage() {
           <div className="text-gray-500 text-sm font-medium mb-2">Current Occupancy</div>
           <div className="text-4xl font-bold text-blue-500">{stats.currentOccupancy}</div>
           <p className="text-gray-600 text-xs mt-2">tables occupied</p>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-gray-500 text-sm font-medium mb-2">Waitlist</div>
-          <div className="text-4xl font-bold text-purple-500">{stats.waitlistSize}</div>
-          <p className="text-gray-600 text-xs mt-2">guests waiting</p>
         </div>
       </div>
 
@@ -97,13 +88,6 @@ export default function DashboardPage() {
           >
             <div className="font-bold text-primary">Manage Reservations</div>
             <p className="text-sm text-gray-600 mt-1">View and confirm pending reservations</p>
-          </a>
-          <a
-            href="/dashboard/waitlist"
-            className="block p-4 border-2 border-primary border-dashed rounded-lg hover:bg-primary-bg transition-colors"
-          >
-            <div className="font-bold text-primary">Check Waitlist</div>
-            <p className="text-sm text-gray-600 mt-1">Manage guests waiting for tables</p>
           </a>
           <a
             href="/dashboard/calendar"

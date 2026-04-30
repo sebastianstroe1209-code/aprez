@@ -3,7 +3,7 @@
 > Read this file at the start of every Claude Code (or Cowork) session before touching code.
 > The owner is **Sebastian Stroe** (Babson College, non-technical). Explain what you're doing and give terminal commands he can paste.
 
-> **Source-of-truth precedence:** `MVP_SCOPE.md` (revised 2026-04-28) **overrides** anything in this file or `ApRez FULL DOC MVP1.docx`. When this file and `MVP_SCOPE.md` disagree, `MVP_SCOPE.md` wins. Read it before planning features.
+> **Source-of-truth precedence (revised 2026-04-30):** `SPEC.md` is the **single canonical product spec**. It supersedes both `ApRez FULL DOC MVP1.docx` and the now-archived `MVP_SCOPE.md`. Read `SPEC.md` before planning any feature; cross-reference its section numbers (§5.1, §6.5, §9.3, etc.) when discussing changes. The docx is kept in the repo for reference only — do **not** treat it as authoritative.
 
 ---
 
@@ -16,7 +16,7 @@ A restaurant reservation platform for Romania (think OpenTable). Two-sided marke
 
 Revenue: 1 RON per person per booking, billed monthly to restaurants. Sebastian handles billing manually for MVP.
 
-The full product spec lives in `ApRez FULL DOC MVP1.docx` (uploaded). Always treat that as the source of truth for behavior. If the spec and code disagree, ask before changing the spec.
+The full product spec lives in `SPEC.md`. Always treat that as the source of truth for behavior. If `SPEC.md` and the code disagree, the code is wrong unless `SPEC.md`'s decisions log records an explicit override. If `SPEC.md` is silent on something, ask before assuming.
 
 ---
 
@@ -95,18 +95,19 @@ Database commands (run from `server/`):
 - Backend: full reservation logic, auto-confirm rules, opening hours, time slot generation
 - Admin backend: full CRUD for restaurants, tables, sections, staff, billing reports, audit logs
 
-**Half-wired (top fixes before adding features):**
+**Half-wired (top fixes before adding features — see SPEC.md §15):**
 1. **Socket.IO has no frontend clients at all.** Backend emits, but `socket.io-client` is not imported in mobile, restaurant, OR admin. Real-time table status / reservation feed all rely on manual refresh.
-2. **No design tokens for web apps.** Mobile has `apps/mobile/src/lib/colors.js`. Restaurant + admin apps use raw Tailwind classes (`accent`, `status-*`) defined inline in each `tailwind.config.js`, and the admin's accent (`#4CAF50`) doesn't even match the brand (`#22c55e`). Unify before adding more pages.
-3. **No i18n layer in any frontend.** Every UI string is hardcoded English, despite DoD #10 calling for Romanian-primary i18n. DB schema supports it (`nameRo`/`nameEn`, `User.preferredLanguage`); code doesn't.
-4. **Auth is email+password only and incomplete.** No forgot-password reset flow. No account-deletion (GDPR) endpoint. Restaurant credentials are created by admin but never emailed — manual handoff for MVP is fine, flag for post-MVP.
-5. **Push notifications not wired.** No Firebase setup, no FCM tokens stored, no 45-min reminder job (it's a TODO comment in `server/src/socket/handlers.js:92`).
+2. **No i18n layer in any frontend.** Every UI string is hardcoded English, despite SPEC.md §11 + DoD #10 calling for Romanian-primary i18n. DB schema supports it (`nameRo`/`nameEn`, `User.preferredLanguage`); code doesn't.
+3. **Auth is email+password only and incomplete.** No forgot-password reset flow (SPEC.md §6.8 / §3.3). No account-deletion (GDPR) endpoint (SPEC.md §5.9). Restaurant credentials are created by admin but never emailed — manual handoff for MVP is fine, flag for post-MVP.
+4. **Push notifications not wired.** No Firebase setup, no FCM tokens stored, no 45-min reminder job (it's a TODO comment in `server/src/socket/handlers.js:92`). See SPEC.md §10.
 
-**Floor plan endpoints DO exist** — earlier docs claimed otherwise. `PUT /api/restaurant/tables/:id/status` and `/seat` are at `server/src/routes/restaurantPlatform.routes.js:802` and `:833`, and `apps/restaurant/app/dashboard/live/page.js:58,70` calls them correctly.
+**Design tokens unified:** `packages/shared/theme/colors.js` is the source of truth. Both Next apps consume `tailwindColors` from it. Mobile re-exports `Colors` from it.
 
-**Not built yet (and IN scope per MVP_SCOPE.md):** account deletion (GDPR), forgot-password reset for staff, "Special requests" free-text field on reservation, modification approval/rejection flow (all modifications require staff approval per the new rule), favorites screen polish.
+**Floor plan endpoints DO exist** — earlier docs claimed otherwise. `PUT /api/restaurant/tables/:id/status` and `/seat` are at `server/src/routes/restaurantPlatform.routes.js`, and `apps/restaurant/app/dashboard/live/page.js` calls them correctly.
 
-**Cut from MVP** (do not build, see MVP_SCOPE.md): waitlist (mobile + restaurant page), Google Maps reviews, admin Analytics, admin Billing Support, WhatsApp/SMS OTP, diacritic-insensitive search, variable reservation duration, auto-ban on no-shows.
+**Not built yet (and IN scope per SPEC.md §15):** account deletion (GDPR §5.9), forgot-password reset for staff (§6.8), "Special requests" free-text field on reservation (§5.3), modification approval/rejection flow (§5.6 — all modifications require staff approval), photos/menu PDF upload in admin (§7.1), reservation-disabled days (§7.1), custom grid dimensions per section (§7.2), table moving / combining (§8.2), Awaiting Guest auto-transition + 15-min reminder (§8.1), 120-min Occupied timer (§8.1), `specialRequests` schema column (§9.1), auto-confirm toggle on staff Manage Profile page (§6.7), favorites screen polish.
+
+**Cut from MVP** (see SPEC.md §14 decisions log): waitlist (entire system, mobile + restaurant page + schema), Google Maps reviews, admin Analytics, admin Billing Support, WhatsApp/SMS OTP, diacritic-insensitive search, variable reservation duration, auto-ban on no-shows, phone international support beyond +40.
 
 ---
 
@@ -147,7 +148,8 @@ For Claude Code: when implementing a feature, write the DoD checklist as comment
 
 ## Working style for AI assistants
 
-- **Don't trust yourself on the spec.** Re-read the relevant section of `ApRez FULL DOC MVP1.docx` before implementing a flow.
+- **Don't trust yourself on the spec.** Re-read the relevant section of `SPEC.md` (cite section numbers like §5.3, §6.5) before implementing a flow.
+- **Manual visual verification is required.** API smoke-tests are necessary but not sufficient. For any UI change, open the affected page in a real browser, walk the flow, and confirm. See DoD #6 and #12 in `SPEC.md`.
 - **Refuse to ship half-wired flows.** If a UI button calls an endpoint that doesn't exist yet, build the endpoint first or stop and flag it. Don't paper over with mocks.
 - **Small commits.** One feature or fix per commit. Conventional commits format: `feat:`, `fix:`, `chore:`, `refactor:`.
 - **Ask before destructive changes.** Schema migrations, deleting files, changing auth flow — confirm with Sebastian.
@@ -155,12 +157,8 @@ For Claude Code: when implementing a feature, write the DoD checklist as comment
 
 ---
 
-## Tech debt to address before MVP launch (in order — see MVP_SCOPE.md "Revised feature priority")
+## Where to find the work backlog
 
-1. **Unify design system across web** — extract `apps/mobile/src/lib/colors.js` to `packages/shared/theme/colors.js`; both Next apps import from it via Tailwind config. Pure refactor, unblocks DoD #7 for everything after.
-2. **Wire Socket.IO end-to-end** — frontend clients first (restaurant Live floor plan, then admin), mobile later. Backend already emits.
-3. **i18n plumbing (RO primary, EN secondary)** across all three frontends. `next-intl` for both Next apps, `react-i18next` for mobile.
-4. **Auth completion** — email+password forgot-password reset (diner + restaurant staff) and GDPR account deletion. SMS OTP is deferred.
-5. **Push notifications + 45-min reminder job** — Firebase setup, FCM token storage, the reminder cron job, and the push/SMS-fallback rules from MVP_SCOPE.md §"Per-event notification channels".
-6. **Special requests** free-text field on reservations (small schema addition; piggybacks on the modification flow work).
-7. Production deploy plan (Vercel for web, Railway for backend, Expo EAS for mobile).
+The authoritative list of remaining MVP work lives in `SPEC.md` §15 "Known gaps & bugs to fix". Each entry references a section of `SPEC.md` so the spec context is one click away.
+
+When starting a new feature, read its `SPEC.md` section in full (not just the summary), build the feature, and remove the entry from §15 only after the feature passes manual visual verification (DoD #12).

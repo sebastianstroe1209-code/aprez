@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { apiGet, apiPut } from '../../../lib/api'
+import { formatTime } from '../../../lib/format'
 
 const statusColors = {
   FREE: { bg: 'bg-green-50', border: 'border-table-free', text: 'text-green-900', label: 'Free' },
@@ -329,7 +330,7 @@ export default function LiveFloorPlanPage() {
       <div className="mt-6 text-sm text-gray-500 flex items-center justify-between">
         <span>Auto-refreshes every 30 seconds</span>
         {lastRefresh && (
-          <span>Last updated: {lastRefresh.toLocaleTimeString()}</span>
+          <span>Last updated: {formatTime(lastRefresh.toISOString())}</span>
         )}
       </div>
     </div>

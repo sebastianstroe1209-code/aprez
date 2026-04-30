@@ -580,6 +580,21 @@ router.put(
         return res.status(404).json({ error: 'Reservation not found' });
       }
 
+      // SPEC §8.1 seating eligibility: cannot seat onto a table whose
+      // current status is Occupied or Out of Service. Backend enforces this
+      // even if the UI somehow allows the click.
+      if (reservation.tableId) {
+        const table = await prisma.restaurantTable.findUnique({
+          where: { id: reservation.tableId },
+          select: { status: true, tableNumber: true },
+        });
+        if (table && (table.status === 'OCCUPIED' || table.status === 'OUT_OF_SERVICE')) {
+          return res.status(409).json({
+            error: `Cannot seat: table ${table.tableNumber} is ${table.status === 'OCCUPIED' ? 'occupied' : 'out of service'}.`,
+          });
+        }
+      }
+
       const updated = await prisma.reservation.update({
         where: { id },
         data: {

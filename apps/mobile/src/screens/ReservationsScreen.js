@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../lib/colors';
 import api, { getErrorMessage } from '../lib/api';
+import { formatDate } from '../lib/format';
 import { useFocusEffect } from '@react-navigation/native';
 
 const STATUS_CONFIG = {
@@ -25,12 +26,6 @@ const STATUS_CONFIG = {
   MODIFICATION_PENDING: { color: Colors.warning, bg: Colors.warningBg, label: 'Modification Pending', icon: 'create-outline' },
 };
 
-function formatDateNice(dateStr) {
-  const d = new Date(dateStr);
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${days[d.getUTCDay()]}, ${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
-}
 
 export default function ReservationsScreen({ navigation }) {
   const [reservations, setReservations] = useState([]);
@@ -105,7 +100,7 @@ export default function ReservationsScreen({ navigation }) {
           <View style={styles.detailsRow}>
             <View style={styles.detailItem}>
               <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
-              <Text style={styles.detailText}>{formatDateNice(item.date)}</Text>
+              <Text style={styles.detailText}>{formatDate(item.date)}</Text>
             </View>
             <View style={styles.detailItem}>
               <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />

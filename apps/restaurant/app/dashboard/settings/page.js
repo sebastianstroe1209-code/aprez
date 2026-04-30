@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiGet, apiPut, apiPost, apiDelete } from '../../../lib/api'
+import { formatDate } from '../../../lib/format'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -332,7 +333,7 @@ export default function SettingsPage() {
                     <td className="px-6 py-4 text-sm">{ban.user ? `${ban.user.firstName} ${ban.user.lastName}` : 'N/A'}</td>
                     <td className="px-6 py-4 text-sm">{ban.user?.phone || 'N/A'}</td>
                     <td className="px-6 py-4 text-sm">{ban.user?.email || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm">{new Date(ban.createdAt).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-sm">{formatDate(ban.createdAt)}</td>
                     <td className="px-6 py-4 text-sm">
                       <button
                         onClick={() => handleUnban(ban.id)}
