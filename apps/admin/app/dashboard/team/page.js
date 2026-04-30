@@ -77,7 +77,7 @@ export default function TeamPage() {
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="bg-accent text-white px-6 py-2 rounded-lg font-medium hover:bg-green-600 transition-colors"
+          className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-dark transition-colors"
         >
           + Add Member
         </button>
@@ -127,7 +127,7 @@ export default function TeamPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="bg-accent text-white px-4 py-2 rounded hover:bg-green-600 disabled:bg-gray-400 transition-colors"
+                className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-dark disabled:bg-gray-400 transition-colors"
               >
                 {submitting ? 'Adding...' : 'Add Member'}
               </button>

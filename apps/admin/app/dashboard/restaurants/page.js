@@ -49,7 +49,7 @@ export default function RestaurantsPage() {
         </div>
         <Link
           href="/dashboard/restaurants/new"
-          className="bg-accent text-white px-6 py-2 rounded-lg font-medium hover:bg-green-600 transition-colors"
+          className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-dark transition-colors"
         >
           + Create Restaurant
         </Link>
@@ -66,7 +66,7 @@ export default function RestaurantsPage() {
           <p className="text-gray-600 text-lg">No restaurants yet</p>
           <Link
             href="/dashboard/restaurants/new"
-            className="mt-4 inline-block text-accent font-medium hover:underline"
+            className="mt-4 inline-block text-primary font-medium hover:underline"
           >
             Create the first one
           </Link>
@@ -110,13 +110,13 @@ export default function RestaurantsPage() {
                   <td className="px-6 py-4 text-sm space-x-2">
                     <Link
                       href={`/dashboard/restaurants/${restaurant.id}`}
-                      className="text-accent hover:underline font-medium"
+                      className="text-primary hover:underline font-medium"
                     >
                       Edit
                     </Link>
                     <Link
                       href={`/dashboard/restaurants/${restaurant.id}/layout-editor`}
-                      className="text-accent hover:underline font-medium"
+                      className="text-primary hover:underline font-medium"
                     >
                       Layout
                     </Link>

@@ -68,7 +68,7 @@ export default function BillingPage() {
         <button
           onClick={handleGenerateReports}
           disabled={submitting}
-          className="bg-accent text-white px-6 py-2 rounded-lg font-medium hover:bg-green-600 disabled:bg-gray-400 transition-colors"
+          className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-dark disabled:bg-gray-400 transition-colors"
         >
           Generate Reports
         </button>
@@ -137,7 +137,7 @@ export default function BillingPage() {
                       <button
                         onClick={() => handleMarkAsPaid(record.id)}
                         disabled={submitting}
-                        className="text-accent hover:underline font-medium disabled:text-gray-400"
+                        className="text-primary hover:underline font-medium disabled:text-gray-400"
                       >
                         Mark as Paid
                       </button>

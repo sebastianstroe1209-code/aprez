@@ -52,7 +52,7 @@ export default function DashboardLayout({ children }) {
                 href={item.href}
                 className={`block px-4 py-3 rounded-lg transition-colors ${
                   isActive
-                    ? 'bg-accent text-white'
+                    ? 'bg-primary text-white'
                     : 'text-gray-300 hover:bg-gray-700'
                 }`}
               >

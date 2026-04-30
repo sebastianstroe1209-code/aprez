@@ -131,7 +131,7 @@ export default function LayoutEditorPage() {
         <h1 className="text-3xl font-bold text-gray-800">Table Layout Editor</h1>
         <button
           onClick={() => setShowAddSection(!showAddSection)}
-          className="bg-accent text-white px-4 py-2 rounded-lg font-medium hover:bg-green-600 transition-colors"
+          className="bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-dark transition-colors"
         >
           + Add Section
         </button>
@@ -193,7 +193,7 @@ export default function LayoutEditorPage() {
           <div className="flex gap-2 mt-4">
             <button
               onClick={handleAddSection}
-              className="bg-accent text-white px-4 py-2 rounded hover:bg-green-600 transition-colors"
+              className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-dark transition-colors"
             >
               Create Section
             </button>
@@ -217,7 +217,7 @@ export default function LayoutEditorPage() {
                 onClick={() => setActiveSection(section.id)}
                 className={`px-4 py-2 font-medium transition-colors border-b-2 ${
                   activeSection === section.id
-                    ? 'border-accent text-accent'
+                    ? 'border-primary text-primary'
                     : 'border-transparent text-gray-600 hover:text-gray-800'
                 }`}
               >
@@ -234,7 +234,7 @@ export default function LayoutEditorPage() {
               </h2>
 
               {showTableForm && selectedCell && (
-                <div className="mb-6 p-4 border border-accent rounded-lg bg-green-50">
+                <div className="mb-6 p-4 border border-primary rounded-lg bg-primary-bg">
                   <h3 className="font-semibold text-gray-800 mb-3">
                     Add table to row {selectedCell.row + 1}, column {selectedCell.col + 1}
                   </h3>
@@ -271,7 +271,7 @@ export default function LayoutEditorPage() {
                   <div className="flex gap-2 mt-4">
                     <button
                       onClick={handleAddTable}
-                      className="bg-accent text-white px-4 py-2 rounded hover:bg-green-600 transition-colors"
+                      className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-dark transition-colors"
                     >
                       Create Table
                     </button>

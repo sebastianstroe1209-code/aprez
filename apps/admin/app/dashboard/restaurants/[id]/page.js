@@ -249,7 +249,7 @@ export default function EditRestaurantPage() {
                   `Username: ${credentials.username}\nPassword: ${credentials.password}`
                 )
               }}
-              className="w-full bg-accent text-white px-4 py-2 rounded hover:bg-green-600 transition-colors"
+              className="w-full bg-primary text-white px-4 py-2 rounded hover:bg-primary-dark transition-colors"
             >
               Copy Credentials
             </button>
@@ -532,7 +532,7 @@ export default function EditRestaurantPage() {
                         onClick={() => toggleServicePeriodDay(idx, dayIdx)}
                         className={`w-10 h-10 rounded-full text-xs font-medium border-2 transition-colors ${
                           (sp.daysOfWeek || [0,1,2,3,4,5,6]).includes(dayIdx)
-                            ? 'bg-accent text-white border-accent'
+                            ? 'bg-primary text-white border-primary'
                             : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'
                         }`}
                       >
@@ -547,7 +547,7 @@ export default function EditRestaurantPage() {
           <button
             type="button"
             onClick={addServicePeriod}
-            className="mt-4 text-accent font-medium hover:underline"
+            className="mt-4 text-primary font-medium hover:underline"
           >
             + Add Service Period
           </button>
@@ -584,7 +584,7 @@ export default function EditRestaurantPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="bg-accent text-white px-6 py-2 rounded-lg font-medium hover:bg-green-600 disabled:bg-gray-400 transition-colors"
+            className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-dark disabled:bg-gray-400 transition-colors"
           >
             {submitting ? 'Saving...' : 'Save Changes'}
           </button>
