@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react'
 import { apiGet, apiPut } from '../../../lib/api'
 
 const statusColors = {
-  FREE: { bg: 'bg-green-50', border: 'border-green-500', text: 'text-green-900', label: 'Free' },
-  OCCUPIED: { bg: 'bg-red-50', border: 'border-red-500', text: 'text-red-900', label: 'Occupied' },
-  ARRIVING_SOON: { bg: 'bg-orange-50', border: 'border-orange-500', text: 'text-orange-900', label: 'Arriving Soon' },
-  AWAITING_GUEST: { bg: 'bg-pink-50', border: 'border-pink-500', text: 'text-pink-900', label: 'Awaiting Guest' },
-  OUT_OF_SERVICE: { bg: 'bg-gray-50', border: 'border-gray-500', text: 'text-gray-900', label: 'Out of Service' },
+  FREE: { bg: 'bg-green-50', border: 'border-table-free', text: 'text-green-900', label: 'Free' },
+  OCCUPIED: { bg: 'bg-red-50', border: 'border-table-occupied', text: 'text-red-900', label: 'Occupied' },
+  ARRIVING_SOON: { bg: 'bg-orange-50', border: 'border-table-arriving', text: 'text-orange-900', label: 'Arriving Soon' },
+  AWAITING_GUEST: { bg: 'bg-pink-50', border: 'border-table-awaiting', text: 'text-pink-900', label: 'Awaiting Guest' },
+  OUT_OF_SERVICE: { bg: 'bg-gray-50', border: 'border-table-out', text: 'text-gray-900', label: 'Out of Service' },
 }
 
 export default function LiveFloorPlanPage() {
@@ -115,7 +115,7 @@ export default function LiveFloorPlanPage() {
               onClick={() => setActiveSection(section.id)}
               className={`px-6 py-3 font-medium transition-colors ${
                 activeSection === section.id
-                  ? 'border-b-2 border-accent text-accent'
+                  ? 'border-b-2 border-primary text-primary'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -211,7 +211,7 @@ export default function LiveFloorPlanPage() {
                 <div className="flex gap-2 pt-4">
                   <button
                     onClick={handleStatusChange}
-                    className="flex-1 px-4 py-2 bg-accent text-white rounded hover:bg-green-600 transition-colors"
+                    className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition-colors"
                   >
                     Update Status
                   </button>

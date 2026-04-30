@@ -45,7 +45,7 @@ input[type='time']:focus,
 input[type='date']:focus,
 select:focus,
 textarea:focus {
-  @apply outline-none ring-2 ring-accent ring-opacity-50;
+  @apply outline-none ring-2 ring-primary ring-opacity-50;
 }
 
 button {
@@ -74,23 +74,23 @@ button {
 
 /* Status color classes */
 .table-cell-free {
-  @apply border-status-free bg-green-50 text-green-900;
+  @apply border-table-free bg-green-50 text-green-900;
 }
 
 .table-cell-occupied {
-  @apply border-status-occupied bg-red-50 text-red-900;
+  @apply border-table-occupied bg-red-50 text-red-900;
 }
 
 .table-cell-arriving {
-  @apply border-status-arriving bg-orange-50 text-orange-900;
+  @apply border-table-arriving bg-orange-50 text-orange-900;
 }
 
 .table-cell-awaiting {
-  @apply border-status-awaiting bg-pink-50 text-pink-900;
+  @apply border-table-awaiting bg-pink-50 text-pink-900;
 }
 
 .table-cell-out {
-  @apply border-status-out bg-gray-50 text-gray-900;
+  @apply border-table-out bg-gray-50 text-gray-900;
 }
 
 /* Modal styles */

@@ -58,7 +58,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-lg shadow p-6">
           <div className="text-gray-500 text-sm font-medium mb-2">Today's Reservations</div>
-          <div className="text-4xl font-bold text-accent">{stats.todayReservations}</div>
+          <div className="text-4xl font-bold text-primary">{stats.todayReservations}</div>
           <p className="text-gray-600 text-xs mt-2">confirmed and pending</p>
         </div>
 
@@ -86,30 +86,30 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <a
             href="/dashboard/live"
-            className="block p-4 border-2 border-accent border-dashed rounded-lg hover:bg-green-50 transition-colors"
+            className="block p-4 border-2 border-primary border-dashed rounded-lg hover:bg-primary-bg transition-colors"
           >
-            <div className="font-bold text-accent">View Live Floor Plan</div>
+            <div className="font-bold text-primary">View Live Floor Plan</div>
             <p className="text-sm text-gray-600 mt-1">See real-time table statuses and manage seating</p>
           </a>
           <a
             href="/dashboard/reservations"
-            className="block p-4 border-2 border-accent border-dashed rounded-lg hover:bg-green-50 transition-colors"
+            className="block p-4 border-2 border-primary border-dashed rounded-lg hover:bg-primary-bg transition-colors"
           >
-            <div className="font-bold text-accent">Manage Reservations</div>
+            <div className="font-bold text-primary">Manage Reservations</div>
             <p className="text-sm text-gray-600 mt-1">View and confirm pending reservations</p>
           </a>
           <a
             href="/dashboard/waitlist"
-            className="block p-4 border-2 border-accent border-dashed rounded-lg hover:bg-green-50 transition-colors"
+            className="block p-4 border-2 border-primary border-dashed rounded-lg hover:bg-primary-bg transition-colors"
           >
-            <div className="font-bold text-accent">Check Waitlist</div>
+            <div className="font-bold text-primary">Check Waitlist</div>
             <p className="text-sm text-gray-600 mt-1">Manage guests waiting for tables</p>
           </a>
           <a
             href="/dashboard/calendar"
-            className="block p-4 border-2 border-accent border-dashed rounded-lg hover:bg-green-50 transition-colors"
+            className="block p-4 border-2 border-primary border-dashed rounded-lg hover:bg-primary-bg transition-colors"
           >
-            <div className="font-bold text-accent">View Calendar</div>
+            <div className="font-bold text-primary">View Calendar</div>
             <p className="text-sm text-gray-600 mt-1">See all reservations in calendar view</p>
           </a>
         </div>

@@ -215,7 +215,7 @@ export default function SettingsPage() {
 
           <button
             onClick={handleSaveProfile}
-            className="px-4 py-2 bg-accent text-white rounded hover:bg-green-600 transition-colors"
+            className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition-colors"
           >
             Save Profile
           </button>
@@ -262,7 +262,7 @@ export default function SettingsPage() {
                       key={dayIdx}
                       className={`w-9 h-9 rounded-full text-xs font-medium flex items-center justify-center ${
                         (sp.daysOfWeek || [0,1,2,3,4,5,6]).includes(dayIdx)
-                          ? 'bg-accent text-white'
+                          ? 'bg-primary text-white'
                           : 'bg-gray-100 text-gray-400'
                       }`}
                     >
@@ -289,7 +289,7 @@ export default function SettingsPage() {
             onClick={handleToggleAutoConfirm}
             className={`px-6 py-2 rounded font-medium transition-colors ${
               autoConfirmEnabled
-                ? 'bg-green-500 text-white hover:bg-green-600'
+                ? 'bg-primary text-white hover:bg-primary-dark'
                 : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
             }`}
           >
@@ -336,7 +336,7 @@ export default function SettingsPage() {
                     <td className="px-6 py-4 text-sm">
                       <button
                         onClick={() => handleUnban(ban.id)}
-                        className="text-xs px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                        className="text-xs px-3 py-1 bg-primary text-white rounded hover:bg-primary-dark"
                       >
                         Unban
                       </button>

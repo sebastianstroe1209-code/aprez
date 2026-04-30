@@ -123,7 +123,7 @@ export default function CalendarPage() {
                     return (
                       <td key={table.id} className="px-2 py-3 border-r text-center">
                         {res && (
-                          <div className="bg-accent text-white text-xs p-2 rounded">
+                          <div className="bg-primary text-white text-xs p-2 rounded">
                             <div className="font-medium">
                               {res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'Guest')}
                             </div>

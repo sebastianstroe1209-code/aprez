@@ -109,7 +109,7 @@ export default function WaitlistPage() {
               ) : (
                 waitlist.map((entry) => (
                   <tr key={entry.id} className="border-b hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-bold text-accent">{entry.position}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-primary">{entry.position}</td>
                     <td className="px-6 py-4 text-sm">
                       {entry.user ? `${entry.user.firstName} ${entry.user.lastName}` : 'N/A'}
                     </td>

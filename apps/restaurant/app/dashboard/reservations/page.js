@@ -190,7 +190,7 @@ export default function ReservationsPage() {
         <h1 className="text-3xl font-bold">Reservations</h1>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 bg-accent text-white rounded hover:bg-green-600 transition-colors"
+          className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition-colors"
         >
           Create Manual Reservation
         </button>
@@ -212,7 +212,7 @@ export default function ReservationsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="flex-1"
           />
-          <button type="submit" className="px-4 py-2 bg-accent text-white rounded hover:bg-green-600">
+          <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark">
             Search
           </button>
         </div>
@@ -231,7 +231,7 @@ export default function ReservationsPage() {
               onClick={() => setTab(t.id)}
               className={`px-6 py-3 font-medium transition-colors ${
                 tab === t.id
-                  ? 'border-b-2 border-accent text-accent'
+                  ? 'border-b-2 border-primary text-primary'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -279,7 +279,7 @@ export default function ReservationsPage() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleConfirmClick(res)}
-                            className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                            className="text-xs px-2 py-1 bg-primary text-white rounded hover:bg-primary-dark"
                           >
                             Confirm
                           </button>
@@ -385,7 +385,7 @@ export default function ReservationsPage() {
                 <div className="flex gap-2 pt-4">
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-accent text-white rounded hover:bg-green-600"
+                    className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark"
                   >
                     Create
                   </button>
@@ -429,7 +429,7 @@ export default function ReservationsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={handleConfirm}
-                  className="flex-1 px-4 py-2 bg-accent text-white rounded hover:bg-green-600"
+                  className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark"
                 >
                   Confirm
                 </button>
