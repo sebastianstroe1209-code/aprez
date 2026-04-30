@@ -238,11 +238,16 @@ router.get(
         return res.status(404).json({ error: 'Reservation not found' });
       }
 
+      // SPEC §8.1: exclude tables whose CURRENT status is Occupied or Out of
+      // Service, in addition to the time-overlap exclusion below. A 6-seat
+      // table currently held by a walk-in must not be offered as eligible
+      // even if no future reservation conflicts at the requested time.
       const tables = await prisma.restaurantTable.findMany({
         where: {
           restaurantId,
           isActive: true,
           seatCount: { gte: reservation.partySize },
+          status: { notIn: ['OCCUPIED', 'OUT_OF_SERVICE'] },
         },
         select: { id: true },
       });
@@ -426,6 +431,21 @@ router.put(
 
       if (!reservation) {
         return res.status(404).json({ error: 'Reservation not found' });
+      }
+
+      // SPEC §8.1: reject if the target table is currently Occupied or Out of
+      // Service, regardless of when the reservation is for.
+      const targetTable = await prisma.restaurantTable.findFirst({
+        where: { id: tableId, restaurantId },
+        select: { status: true, tableNumber: true },
+      });
+      if (!targetTable) {
+        return res.status(404).json({ error: 'Table not found' });
+      }
+      if (targetTable.status === 'OCCUPIED' || targetTable.status === 'OUT_OF_SERVICE') {
+        return res.status(409).json({
+          error: `Cannot assign: table ${targetTable.tableNumber} is ${targetTable.status === 'OCCUPIED' ? 'occupied' : 'out of service'}.`,
+        });
       }
 
       const updated = await prisma.reservation.update({

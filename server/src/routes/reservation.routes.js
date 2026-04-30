@@ -120,12 +120,16 @@ router.post(
       const endTime = addMinutes(time, duration);
 
       // Find tables that could fit (single table OR combined seats in same section)
+      // SPEC §8.1: skip tables whose CURRENT status is Occupied or Out of
+      // Service. Auto-confirm must not pre-assign a table that is in active
+      // use right now, even if no future reservation conflicts.
       const pSize = parseInt(partySize);
       const tables = await prisma.restaurantTable.findMany({
         where: {
           restaurantId,
           isActive: true,
           seatCount: { gte: pSize },
+          status: { notIn: ['OCCUPIED', 'OUT_OF_SERVICE'] },
         },
         orderBy: { seatCount: 'asc' },
         select: { id: true, seatCount: true, sectionId: true },
