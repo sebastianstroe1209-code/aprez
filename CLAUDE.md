@@ -3,6 +3,8 @@
 > Read this file at the start of every Claude Code (or Cowork) session before touching code.
 > The owner is **Sebastian Stroe** (Babson College, non-technical). Explain what you're doing and give terminal commands he can paste.
 
+> **Source-of-truth precedence:** `MVP_SCOPE.md` (revised 2026-04-28) **overrides** anything in this file or `ApRez FULL DOC MVP1.docx`. When this file and `MVP_SCOPE.md` disagree, `MVP_SCOPE.md` wins. Read it before planning features.
+
 ---
 
 ## What ApRez is
@@ -94,13 +96,17 @@ Database commands (run from `server/`):
 - Admin backend: full CRUD for restaurants, tables, sections, staff, billing reports, audit logs
 
 **Half-wired (top fixes before adding features):**
-1. **Restaurant Live floor plan calls endpoints that don't exist** (`PUT /api/restaurant/tables/{id}/status` and `/seat`). UI is built, backend isn't. Fix in `server/src/routes/restaurantPlatform.routes.js`.
-2. **Phone OTP is stubbed** — logs to console instead of sending SMS. Twilio integration pending.
-3. **Socket.IO declared but no frontend listens.** Real-time table status, reservation feed, etc. not wired.
-4. **No design tokens for web apps.** Mobile has `apps/mobile/src/lib/colors.js`. Restaurant + admin apps use raw Tailwind classes. Unify before adding more pages.
-5. **Restaurant credentials never delivered** — admin creates staff, but no email is sent. Manual handoff for now is fine, but flag this.
+1. **Socket.IO has no frontend clients at all.** Backend emits, but `socket.io-client` is not imported in mobile, restaurant, OR admin. Real-time table status / reservation feed all rely on manual refresh.
+2. **No design tokens for web apps.** Mobile has `apps/mobile/src/lib/colors.js`. Restaurant + admin apps use raw Tailwind classes (`accent`, `status-*`) defined inline in each `tailwind.config.js`, and the admin's accent (`#4CAF50`) doesn't even match the brand (`#22c55e`). Unify before adding more pages.
+3. **No i18n layer in any frontend.** Every UI string is hardcoded English, despite DoD #10 calling for Romanian-primary i18n. DB schema supports it (`nameRo`/`nameEn`, `User.preferredLanguage`); code doesn't.
+4. **Auth is email+password only and incomplete.** No forgot-password reset flow. No account-deletion (GDPR) endpoint. Restaurant credentials are created by admin but never emailed — manual handoff for MVP is fine, flag for post-MVP.
+5. **Push notifications not wired.** No Firebase setup, no FCM tokens stored, no 45-min reminder job (it's a TODO comment in `server/src/socket/handlers.js:92`).
 
-**Not built yet:** waitlist UI, favorites screen polish, push notifications (Firebase), 45-min reminder job, banned users list UI, modification rejection flow.
+**Floor plan endpoints DO exist** — earlier docs claimed otherwise. `PUT /api/restaurant/tables/:id/status` and `/seat` are at `server/src/routes/restaurantPlatform.routes.js:802` and `:833`, and `apps/restaurant/app/dashboard/live/page.js:58,70` calls them correctly.
+
+**Not built yet (and IN scope per MVP_SCOPE.md):** account deletion (GDPR), forgot-password reset for staff, "Special requests" free-text field on reservation, modification approval/rejection flow (all modifications require staff approval per the new rule), favorites screen polish.
+
+**Cut from MVP** (do not build, see MVP_SCOPE.md): waitlist (mobile + restaurant page), Google Maps reviews, admin Analytics, admin Billing Support, WhatsApp/SMS OTP, diacritic-insensitive search, variable reservation duration, auto-ban on no-shows.
 
 ---
 
@@ -149,12 +155,12 @@ For Claude Code: when implementing a feature, write the DoD checklist as comment
 
 ---
 
-## Tech debt to address before MVP launch (in order)
+## Tech debt to address before MVP launch (in order — see MVP_SCOPE.md "Revised feature priority")
 
-1. Unify the design system across web + mobile (point to `packages/shared/theme`).
-2. Implement missing restaurant table status endpoints.
-3. Wire Socket.IO end-to-end for live updates (table status, new reservations).
-4. Twilio SMS for phone OTP.
-5. Firebase push notifications + 45-min reminder job.
-6. Bilingual i18n layer (Romanian/English) plumbed through all three frontends.
+1. **Unify design system across web** — extract `apps/mobile/src/lib/colors.js` to `packages/shared/theme/colors.js`; both Next apps import from it via Tailwind config. Pure refactor, unblocks DoD #7 for everything after.
+2. **Wire Socket.IO end-to-end** — frontend clients first (restaurant Live floor plan, then admin), mobile later. Backend already emits.
+3. **i18n plumbing (RO primary, EN secondary)** across all three frontends. `next-intl` for both Next apps, `react-i18next` for mobile.
+4. **Auth completion** — email+password forgot-password reset (diner + restaurant staff) and GDPR account deletion. SMS OTP is deferred.
+5. **Push notifications + 45-min reminder job** — Firebase setup, FCM token storage, the reminder cron job, and the push/SMS-fallback rules from MVP_SCOPE.md §"Per-event notification channels".
+6. **Special requests** free-text field on reservations (small schema addition; piggybacks on the modification flow work).
 7. Production deploy plan (Vercel for web, Railway for backend, Expo EAS for mobile).
