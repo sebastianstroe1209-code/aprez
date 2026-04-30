@@ -4,6 +4,15 @@ const { authenticateUser } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Add `minutes` to an HH:mm time string, returning HH:mm.
+function addMinutes(timeStr, minutes) {
+  const [h, m] = timeStr.split(':').map(Number);
+  const totalMin = h * 60 + m + minutes;
+  const newH = Math.floor(totalMin / 60) % 24;
+  const newM = totalMin % 60;
+  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
+
 // Helper function to calculate distance between two coordinates (Haversine formula)
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; // Earth radius in km
@@ -203,17 +212,35 @@ router.get(
         return res.json({ available: false });
       }
 
-      // Check for conflicting reservations
-      const conflicting = await prisma.reservation.findMany({
+      // Compute the requested reservation's window using the restaurant's
+      // configured duration (default 120 minutes). Without this, the prior
+      // implementation treated the whole day as a single slot — a 12:00 booking
+      // would falsely block a 19:00 booking on the same date.
+      const restaurant = await prisma.restaurant.findUnique({
+        where: { id },
+        select: { reservationDurationMin: true },
+      });
+      const durationMin = restaurant?.reservationDurationMin || 120;
+      const requestedEndTime = addMinutes(time, durationMin);
+
+      const sameDay = await prisma.reservation.findMany({
         where: {
           restaurantId: id,
           date: new Date(date),
           status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
           tableId: { in: tables.map((t) => t.id) },
         },
+        select: { tableId: true, time: true, endTime: true },
       });
 
-      const occupiedTableIds = new Set(conflicting.map((r) => r.tableId));
+      // Time overlap: existing.time < requestedEnd AND existing.endTime > requested.
+      // Boundary-touching back-to-back bookings (existing endTime == requested time)
+      // do not collide.
+      const occupiedTableIds = new Set(
+        sameDay
+          .filter((r) => r.time < requestedEndTime && r.endTime > time)
+          .map((r) => r.tableId)
+      );
       const available = tables.some((t) => !occupiedTableIds.has(t.id));
 
       res.json({ available });
