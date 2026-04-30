@@ -50,24 +50,6 @@ export default function DashboardPage() {
       color: 'bg-green-500',
       href: '/dashboard',
     },
-    {
-      title: 'Total Diners This Month',
-      value: data?.totalDinersThisMonth || 0,
-      color: 'bg-purple-500',
-      href: '/dashboard',
-    },
-    {
-      title: 'Revenue (RON)',
-      value: `${(data?.totalDinersThisMonth || 0) * 1} RON`,
-      color: 'bg-yellow-500',
-      href: '/dashboard/billing',
-    },
-    {
-      title: 'Growth',
-      value: `${data?.growthPercentage || 0}%`,
-      color: 'bg-indigo-500',
-      href: '/dashboard',
-    },
   ]
 
   return (
@@ -109,13 +91,6 @@ export default function DashboardPage() {
           >
             <div className="text-2xl mb-2">👥</div>
             <p className="font-medium text-gray-800">Manage Team</p>
-          </a>
-          <a
-            href="/dashboard/billing"
-            className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-center"
-          >
-            <div className="text-2xl mb-2">💰</div>
-            <p className="font-medium text-gray-800">View Billing</p>
           </a>
         </div>
       </div>

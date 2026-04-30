@@ -7,7 +7,6 @@ import { useState, useEffect } from 'react'
 const navigationItems = [
   { name: 'Dashboard', href: '/dashboard', icon: '📊' },
   { name: 'Restaurants', href: '/dashboard/restaurants', icon: '🍽️' },
-  { name: 'Billing', href: '/dashboard/billing', icon: '💰' },
   { name: 'Team', href: '/dashboard/team', icon: '👥' },
 ]
 

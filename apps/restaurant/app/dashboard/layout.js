@@ -9,7 +9,6 @@ const navigationItems = [
   { name: 'Dashboard', href: '/dashboard', icon: '📊' },
   { name: 'Live Floor Plan', href: '/dashboard/live', icon: '📍' },
   { name: 'Reservations', href: '/dashboard/reservations', icon: '📅' },
-  { name: 'Waitlist', href: '/dashboard/waitlist', icon: '⏳' },
   { name: 'Calendar', href: '/dashboard/calendar', icon: '📆' },
   { name: 'Settings', href: '/dashboard/settings', icon: '⚙️' },
 ]
