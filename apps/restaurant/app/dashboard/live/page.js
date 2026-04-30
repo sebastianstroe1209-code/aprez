@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { apiGet, apiPut } from '../../../lib/api'
 
 const statusColors = {
@@ -12,6 +13,10 @@ const statusColors = {
 }
 
 export default function LiveFloorPlanPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const confirmReservationId = searchParams.get('confirmReservationId')
+
   const [sections, setSections] = useState([])
   const [activeSection, setActiveSection] = useState(null)
   const [selectedTable, setSelectedTable] = useState(null)
@@ -23,11 +28,56 @@ export default function LiveFloorPlanPage() {
   const [modalAction, setModalAction] = useState('status') // 'status' or 'seat'
   const [lastRefresh, setLastRefresh] = useState(null)
 
+  // Confirm-mode: when ?confirmReservationId=<id> is set, the page enters a
+  // restricted picker mode. Eligible tables are highlighted; clicking one
+  // assigns it to the reservation instead of opening the status modal.
+  const [confirmReservation, setConfirmReservation] = useState(null)
+  const [eligibleTableIds, setEligibleTableIds] = useState(null) // null = not loaded; Set on success
+
   useEffect(() => {
     loadLayout()
     const interval = setInterval(loadLayout, 30000) // Auto-refresh every 30 seconds
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (!confirmReservationId) {
+      setConfirmReservation(null)
+      setEligibleTableIds(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await apiGet(`/api/restaurant/reservations/${confirmReservationId}/eligible-tables`)
+        if (cancelled) return
+        setConfirmReservation(data.reservation)
+        setEligibleTableIds(new Set(data.eligibleTableIds))
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Failed to load eligible tables')
+      }
+    })()
+    return () => { cancelled = true }
+  }, [confirmReservationId])
+
+  const exitConfirmMode = () => {
+    router.push('/dashboard/live')
+  }
+
+  const handleAssignFromConfirm = async (table) => {
+    if (!confirmReservation) return
+    try {
+      const status = confirmReservation.status
+      const path = status === 'PENDING'
+        ? `/api/restaurant/reservations/${confirmReservation.id}/confirm`
+        : `/api/restaurant/reservations/${confirmReservation.id}/assign-table`
+      await apiPut(path, { tableId: table.id })
+      router.push('/dashboard/live')
+      loadLayout()
+    } catch (err) {
+      alert('Failed to assign table: ' + err.message)
+    }
+  }
 
   const loadLayout = async () => {
     try {
@@ -93,6 +143,34 @@ export default function LiveFloorPlanPage() {
         </div>
       )}
 
+      {/* Confirm-mode banner */}
+      {confirmReservationId && confirmReservation && (
+        <div className="mb-6 p-4 bg-primary-bg border-2 border-primary rounded-lg flex justify-between items-center">
+          <div>
+            <p className="font-bold text-primary">
+              Confirming reservation for{' '}
+              {confirmReservation.guestName
+                || (confirmReservation.user
+                  ? `${confirmReservation.user.firstName} ${confirmReservation.user.lastName}`
+                  : 'guest')}
+            </p>
+            <p className="text-sm text-gray-700">
+              Party of {confirmReservation.partySize} at {confirmReservation.time}
+              {' — '}
+              {eligibleTableIds && eligibleTableIds.size > 0
+                ? `${eligibleTableIds.size} eligible table${eligibleTableIds.size === 1 ? '' : 's'} highlighted`
+                : 'no eligible tables available'}
+            </p>
+          </div>
+          <button
+            onClick={exitConfirmMode}
+            className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 bg-white"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Legend */}
       <div className="mb-6 bg-white rounded-lg shadow p-4">
         <h3 className="font-bold mb-3">Legend</h3>
@@ -144,11 +222,25 @@ export default function LiveFloorPlanPage() {
                 )
                 if (table) {
                   const colors = statusColors[table.status] || statusColors.FREE
+                  const inConfirmMode = !!confirmReservationId
+                  const isEligible = inConfirmMode && eligibleTableIds && eligibleTableIds.has(table.id)
+                  const dimmed = inConfirmMode && !isEligible
                   return (
                     <button
                       key={`${row}-${col}`}
-                      onClick={() => handleTableClick(table)}
-                      className={`border-2 rounded-lg p-3 cursor-pointer transition-all hover:shadow-lg ${colors.bg} ${colors.border} ${colors.text}`}
+                      onClick={() => {
+                        if (inConfirmMode) {
+                          if (isEligible) handleAssignFromConfirm(table)
+                        } else {
+                          handleTableClick(table)
+                        }
+                      }}
+                      disabled={dimmed}
+                      className={`border-2 rounded-lg p-3 transition-all ${
+                        dimmed ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'
+                      } ${
+                        isEligible ? 'ring-4 ring-primary ring-offset-2' : ''
+                      } ${colors.bg} ${colors.border} ${colors.text}`}
                       style={{ minHeight: '90px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
                     >
                       <div className="text-lg font-bold">{table.tableNumber}</div>

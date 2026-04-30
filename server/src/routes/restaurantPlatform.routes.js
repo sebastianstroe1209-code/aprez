@@ -203,8 +203,9 @@ router.get(
 );
 
 // GET /reservations/:id/eligible-tables - Tables available for this reservation
-// Returns active tables with enough seats AND no reservation overlapping
-// [reservation.time, reservation.endTime] on reservation.date.
+// Returns the reservation summary plus active tables with enough seats AND no
+// reservation overlapping [reservation.time, reservation.endTime] on the date.
+// Bundling them avoids a second round trip from the floor-plan confirm flow.
 router.get(
   '/reservations/:id/eligible-tables',
   authenticateRestaurant,
@@ -218,6 +219,19 @@ router.get(
 
       const reservation = await prisma.reservation.findFirst({
         where: { id, restaurantId },
+        select: {
+          id: true,
+          status: true,
+          partySize: true,
+          date: true,
+          time: true,
+          endTime: true,
+          guestName: true,
+          tableId: true,
+          user: {
+            select: { firstName: true, lastName: true },
+          },
+        },
       });
 
       if (!reservation) {
@@ -230,19 +244,11 @@ router.get(
           isActive: true,
           seatCount: { gte: reservation.partySize },
         },
-        select: {
-          id: true,
-          tableNumber: true,
-          seatCount: true,
-          sectionId: true,
-          gridRow: true,
-          gridCol: true,
-          section: { select: { nameRo: true, nameEn: true } },
-        },
+        select: { id: true },
       });
 
       if (tables.length === 0) {
-        return res.json([]);
+        return res.json({ reservation, eligibleTableIds: [] });
       }
 
       const conflicting = await prisma.reservation.findMany({
@@ -262,19 +268,11 @@ router.get(
           .map((r) => r.tableId)
       );
 
-      const eligible = tables
+      const eligibleTableIds = tables
         .filter((t) => !occupiedTableIds.has(t.id))
-        .map((t) => ({
-          id: t.id,
-          tableNumber: t.tableNumber,
-          seatCount: t.seatCount,
-          sectionId: t.sectionId,
-          sectionName: t.section?.nameEn || t.section?.nameRo || null,
-          gridRow: t.gridRow,
-          gridCol: t.gridCol,
-        }));
+        .map((t) => t.id);
 
-      res.json(eligible);
+      res.json({ reservation, eligibleTableIds });
     } catch (error) {
       next(error);
     }

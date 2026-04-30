@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { apiGet, apiPut, apiPost } from '../../../lib/api'
 
 const statusBadgeColor = {
@@ -13,15 +14,12 @@ const statusBadgeColor = {
 }
 
 export default function ReservationsPage() {
+  const router = useRouter()
   const [tab, setTab] = useState('all') // 'all', 'pending', 'today'
   const [reservations, setReservations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [selectedReservation, setSelectedReservation] = useState(null)
-  const [selectedTableId, setSelectedTableId] = useState('')
-  const [availableTables, setAvailableTables] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [createForm, setCreateForm] = useState({
     guestName: '',
@@ -29,7 +27,6 @@ export default function ReservationsPage() {
     date: '',
     time: '',
     partySize: '',
-    tableId: '',
   })
 
   useEffect(() => {
@@ -72,34 +69,8 @@ export default function ReservationsPage() {
     }
   }
 
-  const handleConfirmClick = async (reservation) => {
-    setSelectedReservation(reservation)
-    try {
-      const layoutData = await apiGet('/api/restaurant/layout')
-      const allTables = layoutData.flatMap(s => s.tables)
-      setAvailableTables(allTables)
-    } catch (err) {
-      alert('Failed to load tables: ' + err.message)
-    }
-    setShowConfirmModal(true)
-  }
-
-  const handleConfirm = async () => {
-    if (!selectedTableId) {
-      alert('Please select a table')
-      return
-    }
-    try {
-      await apiPut(`/api/restaurant/reservations/${selectedReservation.id}/confirm`, {
-        tableId: selectedTableId,
-      })
-      setShowConfirmModal(false)
-      setSelectedReservation(null)
-      setSelectedTableId('')
-      loadReservations()
-    } catch (err) {
-      alert('Failed to confirm: ' + err.message)
-    }
+  const handleConfirmClick = (reservation) => {
+    router.push(`/dashboard/live?confirmReservationId=${reservation.id}`)
   }
 
   const handleReject = async (id) => {
@@ -157,13 +128,12 @@ export default function ReservationsPage() {
   const handleCreateSubmit = async (e) => {
     e.preventDefault()
     try {
-      await apiPost('/api/restaurant/reservations', {
+      const created = await apiPost('/api/restaurant/reservations', {
         guestName: createForm.guestName,
         guestPhone: createForm.guestPhone,
         date: createForm.date,
         time: createForm.time,
         partySize: parseInt(createForm.partySize),
-        tableId: createForm.tableId || undefined,
       })
       setShowCreateModal(false)
       setCreateForm({
@@ -172,9 +142,10 @@ export default function ReservationsPage() {
         date: '',
         time: '',
         partySize: '',
-        tableId: '',
       })
-      loadReservations()
+      // Spec §9.5: staff-created reservations auto-confirm. Send staff straight
+      // to the floor plan to assign a table.
+      router.push(`/dashboard/live?confirmReservationId=${created.id}`)
     } catch (err) {
       alert('Failed to create reservation: ' + err.message)
     }
@@ -273,7 +244,13 @@ export default function ReservationsPage() {
                         {res.status.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm">{res.table?.tableNumber ? `T${res.table.tableNumber}` : '-'}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {res.table?.tableNumber
+                        ? `T${res.table.tableNumber}`
+                        : (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED')
+                          ? <span className="text-orange-600 italic">[unassigned]</span>
+                          : '-'}
+                    </td>
                     <td className="px-6 py-4 text-sm">
                       {res.status === 'PENDING' && (
                         <div className="flex gap-2">
@@ -403,47 +380,6 @@ export default function ReservationsPage() {
         </div>
       )}
 
-      {/* Confirm Modal */}
-      {showConfirmModal && selectedReservation && (
-        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6">
-              <h2 className="text-xl font-bold mb-4">Confirm Reservation</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Select a table for {selectedReservation.guestName} ({selectedReservation.partySize} guests)
-              </p>
-              <select
-                value={selectedTableId}
-                onChange={(e) => setSelectedTableId(e.target.value)}
-                className="w-full mb-4"
-              >
-                <option value="">-- Select a table --</option>
-                {availableTables
-                  .filter(t => t.seatCount >= selectedReservation.partySize)
-                  .map(t => (
-                    <option key={t.id} value={t.id}>
-                      Table {t.tableNumber} ({t.seatCount} seats)
-                    </option>
-                  ))}
-              </select>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleConfirm}
-                  className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark"
-                >
-                  Confirm
-                </button>
-                <button
-                  onClick={() => setShowConfirmModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
