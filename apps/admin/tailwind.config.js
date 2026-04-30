@@ -1,3 +1,5 @@
+const { tailwindColors } = require('../../packages/shared/theme/colors');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
@@ -6,11 +8,7 @@ module.exports = {
   ],
   theme: {
     extend: {
-      colors: {
-        accent: '#4CAF50',
-        sidebar: '#1a1a2e',
-        destructive: '#ef4444',
-      },
+      colors: tailwindColors,
     },
   },
   plugins: [],
