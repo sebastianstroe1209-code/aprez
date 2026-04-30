@@ -50,8 +50,6 @@ const Colors = {
 
 // Tailwind theme.extend.colors map. Keys here become utility classes
 // (e.g. `primary` → `bg-primary text-primary border-primary`).
-// Legacy aliases (`accent`, `sidebar`, `destructive`, `status-*`) are kept
-// so existing markup keeps working until the app sweep replaces them.
 const tailwindColors = {
   // Brand
   primary: Colors.primary,
@@ -90,15 +88,9 @@ const tailwindColors = {
   'res-completed': Colors.completed,
   'res-noshow': Colors.noShow,
 
-  // Legacy aliases — kept until app sweep replaces them. Do not add new uses.
-  accent: Colors.primary,
+  // Sidebar — dark navy nav bar background. No semantic equivalent in the
+  // brand palette; both Next apps still use `bg-sidebar`.
   sidebar: '#1a1a2e',
-  destructive: Colors.error,
-  'status-free': Colors.free,
-  'status-occupied': Colors.occupied,
-  'status-arriving': Colors.arrivingSoon,
-  'status-awaiting': Colors.awaitingGuest,
-  'status-out': Colors.outOfService,
 };
 
 module.exports = { Colors, tailwindColors };
