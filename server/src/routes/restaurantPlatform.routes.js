@@ -202,6 +202,85 @@ router.get(
   }
 );
 
+// GET /reservations/:id/eligible-tables - Tables available for this reservation
+// Returns active tables with enough seats AND no reservation overlapping
+// [reservation.time, reservation.endTime] on reservation.date.
+router.get(
+  '/reservations/:id/eligible-tables',
+  authenticateRestaurant,
+  [param('id').isUUID()],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const restaurantId = req.user.restaurantId;
+      const { id } = req.params;
+
+      const reservation = await prisma.reservation.findFirst({
+        where: { id, restaurantId },
+      });
+
+      if (!reservation) {
+        return res.status(404).json({ error: 'Reservation not found' });
+      }
+
+      const tables = await prisma.restaurantTable.findMany({
+        where: {
+          restaurantId,
+          isActive: true,
+          seatCount: { gte: reservation.partySize },
+        },
+        select: {
+          id: true,
+          tableNumber: true,
+          seatCount: true,
+          sectionId: true,
+          gridRow: true,
+          gridCol: true,
+          section: { select: { nameRo: true, nameEn: true } },
+        },
+      });
+
+      if (tables.length === 0) {
+        return res.json([]);
+      }
+
+      const conflicting = await prisma.reservation.findMany({
+        where: {
+          restaurantId,
+          date: reservation.date,
+          id: { not: reservation.id },
+          tableId: { in: tables.map((t) => t.id) },
+          status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
+        },
+        select: { tableId: true, time: true, endTime: true },
+      });
+
+      const occupiedTableIds = new Set(
+        conflicting
+          .filter((r) => r.time < reservation.endTime && r.endTime > reservation.time)
+          .map((r) => r.tableId)
+      );
+
+      const eligible = tables
+        .filter((t) => !occupiedTableIds.has(t.id))
+        .map((t) => ({
+          id: t.id,
+          tableNumber: t.tableNumber,
+          seatCount: t.seatCount,
+          sectionId: t.sectionId,
+          sectionName: t.section?.nameEn || t.section?.nameRo || null,
+          gridRow: t.gridRow,
+          gridCol: t.gridCol,
+        }));
+
+      res.json(eligible);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // PUT /reservations/:id/confirm - Confirm reservation and assign table
 router.put(
   '/reservations/:id/confirm',
@@ -453,7 +532,10 @@ router.post(
           partySize: parseInt(partySize),
           tableId,
           source: 'MANUAL',
-          status: tableId ? 'CONFIRMED' : 'PENDING',
+          // Spec §9.5: staff-created reservations auto-confirm. tableId is
+          // optional at create time; if missing, staff assigns one via the
+          // floor-plan flow afterwards.
+          status: 'AUTO_CONFIRMED',
         },
         include: {
           table: {
