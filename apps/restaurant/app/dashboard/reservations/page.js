@@ -243,6 +243,11 @@ export default function ReservationsPage() {
                       <span className={`px-3 py-1 rounded text-xs font-medium ${statusBadgeColor[res.status] || 'bg-gray-100'}`}>
                         {res.status.replace(/_/g, ' ')}
                       </span>
+                      {res.seatedAt && (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED') && (
+                        <span className="ml-2 px-3 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          Seated
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {res.table?.tableNumber
@@ -268,14 +273,24 @@ export default function ReservationsPage() {
                           </button>
                         </div>
                       )}
-                      {(res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED') && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleSeat(res.id)}
-                            className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                          >
-                            Seat
-                          </button>
+                      {(res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED') && !res.seatedAt && (
+                        <div className="flex gap-2 flex-wrap">
+                          {!res.tableId && (
+                            <button
+                              onClick={() => handleConfirmClick(res)}
+                              className="text-xs px-2 py-1 bg-primary text-white rounded hover:bg-primary-dark"
+                            >
+                              Pick table
+                            </button>
+                          )}
+                          {res.tableId && (
+                            <button
+                              onClick={() => handleSeat(res.id)}
+                              className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                            >
+                              Seat
+                            </button>
+                          )}
                           <button
                             onClick={() => handleCancel(res.id)}
                             className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
@@ -284,7 +299,7 @@ export default function ReservationsPage() {
                           </button>
                         </div>
                       )}
-                      {res.status === 'COMPLETED' || res.status === 'NO_SHOW' || res.status === 'CANCELLED' ? null : (
+                      {(res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED') && res.seatedAt && (
                         <button
                           onClick={() => handleComplete(res.id)}
                           className="text-xs px-2 py-1 bg-purple-500 text-white rounded hover:bg-purple-600"
