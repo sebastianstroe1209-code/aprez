@@ -54,7 +54,8 @@ router.put(
     body('firstName').optional().trim().isLength({ min: 1 }),
     body('lastName').optional().trim().isLength({ min: 1 }),
     body('email').optional().isEmail().normalizeEmail(),
-    body('phone').optional().trim(),
+    // SPEC §3.1: phone optional but must be +40 format (Romanian) when present.
+    body('phone').optional({ checkFalsy: true }).trim().matches(/^\+40\d{9}$/).withMessage('Phone must be in +40XXXXXXXXX format'),
   ],
   handleValidationErrors,
   async (req, res, next) => {

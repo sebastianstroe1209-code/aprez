@@ -11,7 +11,8 @@ const router = express.Router();
 router.post('/register', [
   body('firstName').trim().notEmpty().withMessage('First name is required'),
   body('lastName').trim().notEmpty().withMessage('Last name is required'),
-  body('phone').optional().trim(),
+  // SPEC §3.1: phone is optional but must be +40 format (Romanian) when present.
+  body('phone').optional({ checkFalsy: true }).trim().matches(/^\+40\d{9}$/).withMessage('Phone must be in +40XXXXXXXXX format'),
   body('email').optional().isEmail().withMessage('Invalid email'),
   body('password').optional().isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
 ], async (req, res, next) => {
