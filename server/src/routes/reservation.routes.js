@@ -268,34 +268,7 @@ router.get('/mine', authenticateUser, async (req, res, next) => {
       orderBy: { date: 'desc' },
     });
 
-    // Get active waitlist entries
-    const waitlist = await prisma.waitlist.findMany({
-      where: {
-        userId,
-        status: 'WAITING',
-      },
-      select: {
-        id: true,
-        restaurantId: true,
-        date: true,
-        time: true,
-        partySize: true,
-        position: true,
-        status: true,
-        expiresAt: true,
-        restaurant: {
-          select: {
-            id: true,
-            nameRo: true,
-            nameEn: true,
-            address: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    res.json({ reservations, waitlist });
+    res.json({ reservations });
   } catch (error) {
     next(error);
   }

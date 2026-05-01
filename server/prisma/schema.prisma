@@ -30,7 +30,6 @@ model User {
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   reservations     Reservation[]
-  waitlists        Waitlist[]
   favorites        Favorite[]
   bans             BannedUser[]
   notifications    Notification[] @relation("UserNotifications")
@@ -74,7 +73,6 @@ model Restaurant {
   tableSections         TableSection[]
   tables                RestaurantTable[]
   reservations          Reservation[]
-  waitlists             Waitlist[]
   favorites             Favorite[]
   bans                  BannedUser[]
   staff                 RestaurantStaff[]
@@ -223,6 +221,9 @@ model Reservation {
   actualPartySize  Int?               @map("actual_party_size")
   status           ReservationStatus  @default(PENDING)
   source           ReservationSource  @default(APP)
+  // fromWaitlist is deprecated — Waitlist system was cut from MVP per
+  // SPEC §6.6. Column kept as default-false for backwards compatibility
+  // until a follow-up migration explicitly drops it. No new code reads it.
   fromWaitlist     Boolean            @default(false) @map("from_waitlist")
   guestName        String?            @map("guest_name")
   guestPhone       String?            @map("guest_phone")
@@ -278,38 +279,6 @@ enum ModificationStatus {
   PENDING
   APPROVED
   REJECTED
-}
-
-// ============================================
-// WAITLIST SYSTEM
-// ============================================
-
-model Waitlist {
-  id             String         @id @default(uuid())
-  userId         String         @map("user_id")
-  restaurantId   String         @map("restaurant_id")
-  date           DateTime       @db.Date
-  time           String         // "20:00"
-  partySize      Int            @map("party_size")
-  position       Int
-  status         WaitlistStatus @default(WAITING)
-  notifiedAt     DateTime?      @map("notified_at")
-  expiresAt      DateTime?      @map("expires_at")
-  createdAt      DateTime       @default(now()) @map("created_at")
-
-  user           User           @relation(fields: [userId], references: [id])
-  restaurant     Restaurant     @relation(fields: [restaurantId], references: [id])
-
-  @@index([restaurantId, date, time])
-  @@map("waitlists")
-}
-
-enum WaitlistStatus {
-  WAITING
-  NOTIFIED
-  CONFIRMED
-  EXPIRED
-  CANCELLED
 }
 
 // ============================================
