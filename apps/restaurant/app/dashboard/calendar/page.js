@@ -3,8 +3,12 @@
 import { useState, useEffect } from 'react'
 import { apiGet } from '../../../lib/api'
 
+// SPEC §11: dates handled in Europe/Bucharest. en-CA returns YYYY-MM-DD.
+const todayBucharest = () =>
+  new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
+
 export default function CalendarPage() {
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDate] = useState(todayBucharest())
   const [sections, setSections] = useState([])
   const [reservations, setReservations] = useState([])
   const [activeSection, setActiveSection] = useState(null)
