@@ -78,6 +78,7 @@ model Restaurant {
   staff                 RestaurantStaff[]
   billingReports        BillingReport[]
   notifications         Notification[] @relation("RestaurantNotifications")
+  tableActivities       TableActivity[]
 
   @@map("restaurants")
 }
@@ -170,6 +171,7 @@ model RestaurantTable {
   reservations   Reservation[]
   tableMoves     TableMove[]  @relation("MovedTable")
   mergedWith     TableMove[]  @relation("MergedWithTable")
+  activities     TableActivity[]
 
   @@unique([sectionId, gridRow, gridCol])
   @@map("restaurant_tables")
@@ -205,6 +207,33 @@ model TableMove {
   @@map("table_moves")
 }
 
+// Backs §6.4 calendar's non-reservation activity (walk-ins, OOS).
+// Reservation-driven blocks are derived from the Reservation table itself.
+model TableActivity {
+  id           String        @id @default(uuid())
+  tableId      String        @map("table_id")
+  restaurantId String        @map("restaurant_id")
+  kind         ActivityKind
+  date         DateTime      @db.Date
+  startedAt    DateTime      @map("started_at")
+  endedAt      DateTime?     @map("ended_at")
+  partySize    Int?          @map("party_size")
+  notes        String?       @db.Text
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  table        RestaurantTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, date])
+  @@index([tableId, startedAt])
+  @@map("table_activities")
+}
+
+enum ActivityKind {
+  WALK_IN
+  OUT_OF_SERVICE
+}
+
 // ============================================
 // RESERVATION SYSTEM
 // ============================================
@@ -228,6 +257,7 @@ model Reservation {
   guestName        String?            @map("guest_name")
   guestPhone       String?            @map("guest_phone")
   guestEmail       String?            @map("guest_email")
+  specialRequests  String?            @map("special_requests") @db.Text
   seatedAt         DateTime?          @map("seated_at")
   cancelledAt      DateTime?          @map("cancelled_at")
   cancelledBy      String?            @map("cancelled_by") // 'user', 'restaurant', 'system'
