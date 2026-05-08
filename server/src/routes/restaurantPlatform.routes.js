@@ -61,13 +61,22 @@ router.get(
       const restaurantId = req.user.restaurantId;
       const { date, status } = req.query;
 
-      const filterDate = date ? new Date(date) : new Date();
-      filterDate.setHours(0, 0, 0, 0);
-
-      const where = {
-        restaurantId,
-        date: { gte: filterDate },
-      };
+      // Column is @db.Date; build the day window in UTC so the boundary doesn't
+      // drift with the server's local TZ. When ?date=YYYY-MM-DD is supplied we
+      // return rows for THAT day only (exact match). With no date param we
+      // default to "today (Europe/Bucharest) onward" — the upcoming list view.
+      const where = { restaurantId };
+      if (date) {
+        const dayStart = new Date(`${date}T00:00:00.000Z`);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+        where.date = { gte: dayStart, lt: dayEnd };
+      } else {
+        const todayBucharest = new Date().toLocaleDateString('en-CA', {
+          timeZone: 'Europe/Bucharest',
+        });
+        where.date = { gte: new Date(`${todayBucharest}T00:00:00.000Z`) };
+      }
 
       if (status) {
         where.status = status;

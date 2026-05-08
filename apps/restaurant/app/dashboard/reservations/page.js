@@ -42,7 +42,8 @@ export default function ReservationsPage() {
       if (tab === 'pending') {
         data = await apiGet('/api/restaurant/reservations/pending')
       } else if (tab === 'today') {
-        const today = new Date().toISOString().split('T')[0]
+        // SPEC §11: dates compared in Europe/Bucharest. en-CA returns YYYY-MM-DD.
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
         data = await apiGet(`/api/restaurant/reservations?date=${today}`)
       } else {
         data = await apiGet('/api/restaurant/reservations')
