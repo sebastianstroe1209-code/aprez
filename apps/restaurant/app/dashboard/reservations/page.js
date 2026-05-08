@@ -28,6 +28,7 @@ export default function ReservationsPage() {
     date: '',
     time: '',
     partySize: '',
+    specialRequests: '',
   })
 
   useEffect(() => {
@@ -136,6 +137,7 @@ export default function ReservationsPage() {
         date: createForm.date,
         time: createForm.time,
         partySize: parseInt(createForm.partySize),
+        specialRequests: createForm.specialRequests.trim() || undefined,
       })
       setShowCreateModal(false)
       setCreateForm({
@@ -144,6 +146,7 @@ export default function ReservationsPage() {
         date: '',
         time: '',
         partySize: '',
+        specialRequests: '',
       })
       // Spec §9.5: staff-created reservations auto-confirm. Send staff straight
       // to the floor plan to assign a table.
@@ -236,7 +239,12 @@ export default function ReservationsPage() {
               <tbody>
                 {reservations.map((res) => (
                   <tr key={res.id} className="border-b hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm">{res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'N/A')}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <div>{res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'N/A')}</div>
+                      {res.specialRequests && (
+                        <div className="text-xs text-gray-500 italic mt-1">Note: {res.specialRequests}</div>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm">{res.guestPhone || res.user?.phone || 'N/A'}</td>
                     <td className="px-6 py-4 text-sm">{formatDate(res.date)}</td>
                     <td className="px-6 py-4 text-sm">{res.time}</td>
@@ -349,6 +357,7 @@ export default function ReservationsPage() {
                   <label className="block text-sm font-medium mb-2">Date</label>
                   <input
                     type="date"
+                    lang="en-GB"
                     value={createForm.date}
                     onChange={(e) => setCreateForm({ ...createForm, date: e.target.value })}
                     required
@@ -359,6 +368,7 @@ export default function ReservationsPage() {
                   <label className="block text-sm font-medium mb-2">Time</label>
                   <input
                     type="time"
+                    lang="en-GB"
                     value={createForm.time}
                     onChange={(e) => setCreateForm({ ...createForm, time: e.target.value })}
                     required
@@ -373,6 +383,16 @@ export default function ReservationsPage() {
                     value={createForm.partySize}
                     onChange={(e) => setCreateForm({ ...createForm, partySize: e.target.value })}
                     required
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Special Requests (optional)</label>
+                  <textarea
+                    value={createForm.specialRequests}
+                    onChange={(e) => setCreateForm({ ...createForm, specialRequests: e.target.value })}
+                    placeholder="anniversary, window seat, allergic to peanuts..."
+                    rows={3}
                     className="w-full"
                   />
                 </div>

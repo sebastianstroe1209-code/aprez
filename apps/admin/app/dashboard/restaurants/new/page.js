@@ -332,6 +332,7 @@ export default function NewRestaurantPage() {
                   <>
                     <input
                       type="time"
+                      lang="en-GB"
                       value={oh.openTime}
                       onChange={(e) => handleOpeningHourChange(oh.day, 'openTime', e.target.value)}
                       className="w-32"
@@ -339,6 +340,7 @@ export default function NewRestaurantPage() {
                     <span className="text-gray-400">to</span>
                     <input
                       type="time"
+                      lang="en-GB"
                       value={oh.closeTime}
                       onChange={(e) =>
                         handleOpeningHourChange(oh.day, 'closeTime', e.target.value)
@@ -389,6 +391,7 @@ export default function NewRestaurantPage() {
                     </label>
                     <input
                       type="time"
+                      lang="en-GB"
                       value={sp.startTime}
                       onChange={(e) => handleServicePeriodChange(idx, 'startTime', e.target.value)}
                       className="w-32"
@@ -400,6 +403,7 @@ export default function NewRestaurantPage() {
                     </label>
                     <input
                       type="time"
+                      lang="en-GB"
                       value={sp.endTime}
                       onChange={(e) => handleServicePeriodChange(idx, 'endTime', e.target.value)}
                       className="w-32"

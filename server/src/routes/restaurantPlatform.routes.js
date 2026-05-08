@@ -528,13 +528,14 @@ router.post(
     body('time').matches(/^\d{2}:\d{2}$/),
     body('partySize').isInt({ min: 1 }),
     body('tableId').optional().isUUID(),
+    body('specialRequests').optional({ nullable: true }).isString(),
   ],
   handleValidationErrors,
   async (req, res, next) => {
     try {
       const prisma = req.app.get('prisma');
       const restaurantId = req.user.restaurantId;
-      const { guestName, guestPhone, guestEmail, date, time, partySize, tableId } = req.body;
+      const { guestName, guestPhone, guestEmail, date, time, partySize, tableId, specialRequests } = req.body;
 
       const restaurant = await prisma.restaurant.findUnique({
         where: { id: restaurantId },
@@ -558,6 +559,7 @@ router.post(
           endTime,
           partySize: parseInt(partySize),
           tableId,
+          specialRequests: specialRequests || null,
           source: 'MANUAL',
           // Spec §9.5: staff-created reservations auto-confirm. tableId is
           // optional at create time; if missing, staff assigns one via the

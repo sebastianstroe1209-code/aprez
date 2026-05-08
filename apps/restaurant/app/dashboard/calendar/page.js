@@ -83,6 +83,7 @@ export default function CalendarPage() {
           <label className="block text-sm font-medium mb-2">Date</label>
           <input
             type="date"
+            lang="en-GB"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             className="w-40"
