@@ -113,7 +113,7 @@ export default function CalendarPage() {
                 <th className="px-4 py-3 text-left text-sm font-semibold border-r min-w-20">Time</th>
                 {tables.map(table => (
                   <th key={table.id} className="px-2 py-3 text-center text-xs font-semibold border-r min-w-24">
-                    T{table.tableNumber}
+                    {table.tableNumber}
                     <div className="text-gray-500 font-normal text-xs">{table.seatCount} seats</div>
                   </th>
                 ))}

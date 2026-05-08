@@ -261,7 +261,7 @@ export default function ReservationsPage() {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {res.table?.tableNumber
-                        ? `T${res.table.tableNumber}`
+                        ? res.table.tableNumber
                         : (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED')
                           ? <span className="text-orange-600 italic">[unassigned]</span>
                           : '-'}
