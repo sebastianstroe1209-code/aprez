@@ -25,7 +25,12 @@ model User {
   latitude         Decimal?  @db.Decimal(10, 8)
   longitude        Decimal?  @db.Decimal(11, 8)
   preferredLanguage String   @default("ro") @map("preferred_language")
+  // Deprecated: fcmToken from the original Firebase plan. Replaced by
+  // expoPushToken in C3 (push transport switched to Expo per Sebastian's
+  // decision). Kept here unused; drop in a follow-up commit when
+  // explicit --accept-data-loss approval is given.
   fcmToken         String?   @map("fcm_token")
+  expoPushToken    String?   @map("expo_push_token")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
@@ -259,6 +264,9 @@ model Reservation {
   guestEmail       String?            @map("guest_email")
   specialRequests  String?            @map("special_requests") @db.Text
   seatedAt         DateTime?          @map("seated_at")
+  // Set by the 45-min reminder job (jobs/reminders.js) when the push
+  // notification has fired, so a re-tick can't double-send. SPEC §5.7.
+  reminderSentAt   DateTime?          @map("reminder_sent_at")
   cancelledAt      DateTime?          @map("cancelled_at")
   cancelledBy      String?            @map("cancelled_by") // 'user', 'restaurant', 'system'
   createdAt        DateTime           @default(now()) @map("created_at")

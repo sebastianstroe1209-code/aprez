@@ -30,7 +30,7 @@ router.get('/me', authenticateUser, async (req, res, next) => {
         latitude: true,
         longitude: true,
         language: true,
-        fcmToken: true,
+        expoPushToken: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -156,24 +156,26 @@ router.put(
   }
 );
 
-// PUT /me/fcm-token - Update FCM push notification token
+// PUT /me/push-token - Register the diner's Expo Push token. Mobile app
+// calls this after Expo's getExpoPushTokenAsync() at login. Token format
+// is validated server-side at send time (see channels/push.js).
 router.put(
-  '/me/fcm-token',
+  '/me/push-token',
   authenticateUser,
-  [body('fcmToken').trim().isLength({ min: 1 })],
+  [body('expoPushToken').trim().isLength({ min: 1 })],
   handleValidationErrors,
   async (req, res, next) => {
     try {
       const prisma = req.app.get('prisma');
       const userId = req.user.id;
-      const { fcmToken } = req.body;
+      const { expoPushToken } = req.body;
 
       const updatedUser = await prisma.user.update({
         where: { id: userId },
-        data: { fcmToken },
+        data: { expoPushToken },
         select: {
           id: true,
-          fcmToken: true,
+          expoPushToken: true,
           updatedAt: true,
         },
       });

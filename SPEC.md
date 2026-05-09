@@ -686,6 +686,11 @@ These are tracked here until they're fixed; remove entries when each is resolved
 **Resolved by Tier C2 (2026-05-09):**
 - ~~Email transport stub~~ — `server/src/services/notifications/channels/email.js` now sends via the Resend SDK using `RESEND_API_KEY` / `RESEND_FROM_EMAIL` / `RESEND_FROM_NAME` from `server/.env`. Falls back to console.log with a one-time warning when the key is missing (dev environments don't crash). Failures from Resend are logged but don't propagate past the dispatcher, so a bad email can't break the calling flow. Unblocks the email pieces of §5.9 (account-deletion confirmation), §6.8 (staff forgot-password reset), and §7.1 (admin staff-credentials handoff) — those flows still need their own wiring in Tier D and admin polish.
 
+**Resolved by Tier C3 (2026-05-09):**
+- ~~Push transport stub~~ — `server/src/services/notifications/channels/push.js` now POSTs to `https://exp.host/--/api/v2/push/send` using built-in fetch. Optional `EXPO_ACCESS_TOKEN` env var enables Bearer auth; unauthenticated mode is acceptable for MVP volume and logs a one-time info note. Token format validated (`ExponentPushToken[…]` / `ExpoPushToken[…]`); null or malformed tokens log `[push:skip]` and let the dispatcher's existing §10 fallback chain handle delivery (SMS for events #2/#3/#6/#7, skip-only for #1/#5). HTTP/network errors are logged and never propagate past the dispatcher.
+- ~~§5.7 45-minute reminder cron job~~ — `server/src/jobs/reminders.js` exports `checkAndFireRemindersFor(prisma, io, now)` which finds confirmed/auto-confirmed reservations whose Bucharest wall-clock start is in `[now+44min, now+46min]` and fires `RESERVATION_REMINDER_45` once per reservation. Dedup via `Reservation.reminderSentAt` so a within-window second tick doesn't double-send. The existing `setInterval` in `socket/handlers.js` calls into this job each minute. The dispatcher now forwards a `data` field through to the push channel so the mobile app can render `{ yes: 'confirm', no: 'cancel', reservationId }` action buttons.
+- **Schema additions (2026-05-09):** `User.expoPushToken` (text, nullable) added; old `User.fcmToken` kept as a deprecated column with no readers (drop in a follow-up commit when explicit `--accept-data-loss` approval is given). `Reservation.reminderSentAt` (timestamp, nullable) added. Both pushed to Railway with no data-loss prompt — purely additive. `PUT /api/users/me/fcm-token` renamed to `PUT /api/users/me/push-token` with body field `expoPushToken`; mobile-side wiring lands in a later tier.
+
 **Still open after Phase 2 audit (2026-04-30):**
 - **Calendar doesn't show walk-ins or current occupation state.** §6.4 updated — calendar must display all table activity including walk-ins and currently-occupied state, not just reservation blocks. Schema needs new `TableActivity` model; see Phase 3 plan.
 - **§9.3 auto-confirm uses `gte`, not exact seat-match.** `server/src/routes/reservation.routes.js:128` filters `seatCount: { gte: pSize }`. Spec mandates `seatCount === partySize`. Currently a 4-person party with no exact 4-seat free table can be auto-confirmed onto a 6-seat table.
@@ -722,7 +727,6 @@ These are tracked here until they're fixed; remove entries when each is resolved
 - **§9.1 `specialRequests` column** on reservation schema (if not already present).
 - **Socket.IO real-time wiring** in restaurant + admin frontends. Backend already emits.
 - **i18n plumbing** in all three frontends. Strings currently hardcoded English.
-- **§5.7 Push notifications + 45-min reminder cron job.** Firebase setup not done.
 - **§7.6 Auto-confirm toggle** UI in restaurant platform "Manage Profile" (toggle exists in admin but staff need it on the restaurant side per §6.7).
 
 ### Polish (deferred)

@@ -2,6 +2,7 @@
 // Handles LIVE mode, reservation updates, and notifications
 
 const { EVENTS, dispatchAsync } = require('../services/notifications');
+const { checkAndFireRemindersFor } = require('../jobs/reminders');
 
 module.exports = (io, prisma) => {
   // Track which restaurants are connected (for targeted events)
@@ -216,35 +217,10 @@ module.exports = (io, prisma) => {
         }
       }
 
-      // 5. 45-minute reminders for upcoming reservations
-      const fortyFiveMinFromNow = new Date(now.getTime() + 45 * 60 * 1000);
-      const reminderTime = `${String(fortyFiveMinFromNow.getHours()).padStart(2, '0')}:${String(fortyFiveMinFromNow.getMinutes()).padStart(2, '0')}`;
-
-      const reminderReservations = await prisma.reservation.findMany({
-        where: {
-          date: new Date(today),
-          time: reminderTime,
-          status: { in: ['CONFIRMED', 'AUTO_CONFIRMED'] },
-          userId: { not: null },
-        },
-      });
-
-      for (const res of reminderReservations) {
-        io.emitToUser(res.userId, 'reservation:reminder', {
-          reservationId: res.id,
-          restaurantId: res.restaurantId,
-          time: res.time,
-          partySize: res.partySize,
-        });
-        dispatchAsync(prisma, io, {
-          event: EVENTS.RESERVATION_REMINDER_45,
-          userId: res.userId,
-          restaurantId: res.restaurantId,
-          date: res.date,
-          time: res.time,
-          partySize: res.partySize,
-        });
-      }
+      // 5. 45-minute reminders for upcoming reservations.
+      // Delegated to jobs/reminders.js — Bucharest wall-clock window with
+      // dedup via Reservation.reminderSentAt. SPEC §5.7.
+      await checkAndFireRemindersFor(prisma, io, now);
 
     } catch (error) {
       console.error('Timer check error:', error.message);

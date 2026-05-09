@@ -93,7 +93,7 @@ async function resolveRecipient(prisma, { event, userId, restaurantId }) {
     where: { id: userId },
     select: {
       id: true, firstName: true, lastName: true, phone: true, email: true,
-      fcmToken: true, preferredLanguage: true,
+      expoPushToken: true, preferredLanguage: true,
     },
   });
   if (!user) return null;
@@ -109,9 +109,9 @@ async function resolveRecipient(prisma, { event, userId, restaurantId }) {
   return {
     recipientType: 'user',
     userId,
-    hasPush: !!user.fcmToken,
+    hasPush: !!user.expoPushToken,
     hasPhone: !!user.phone,
-    fcmToken: user.fcmToken,
+    expoPushToken: user.expoPushToken,
     phone: user.phone,
     email: user.email,
     lang: user.preferredLanguage === 'en' ? 'en' : 'ro',
@@ -170,9 +170,12 @@ async function dispatch(prisma, io, payload) {
         userId: recipient.userId,
         restaurantId: recipient.restaurantId,
         eventKey: event,
-        fcmToken: recipient.fcmToken,
+        expoPushToken: recipient.expoPushToken,
         content,
         lang: recipient.lang,
+        // Action data (e.g. {yes, no, reservationId}) for the mobile app to
+        // render notification action buttons. SPEC §5.7.
+        data: ctx.data,
       })
         .then((r) => { results.push = r; })
         .catch((e) => { errors.push({ channel: 'push', error: e.message }); })
