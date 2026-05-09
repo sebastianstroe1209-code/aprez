@@ -1,6 +1,8 @@
 // Socket.io Real-time Event Handlers
 // Handles LIVE mode, reservation updates, and notifications
 
+const { EVENTS, dispatchAsync } = require('../services/notifications');
+
 module.exports = (io, prisma) => {
   // Track which restaurants are connected (for targeted events)
   const restaurantRooms = new Map(); // restaurantId -> Set of socket IDs
@@ -94,6 +96,13 @@ module.exports = (io, prisma) => {
 
   const TIMER_INTERVAL = 60 * 1000; // Check every minute
 
+  // In-memory dedup so the per-minute tick doesn't persist a Notification row
+  // every minute past the threshold. Keyed by `${tableId}:${statusChangedAt}`.
+  // Cleared on process restart — acceptable for MVP since a missed reminder
+  // post-restart is preferable to spamming the dashboard.
+  const dispatchedTimer120 = new Set();
+  const dispatchedTimerAwaiting = new Set(); // key adds the 15-min bucket
+
   setInterval(async () => {
     try {
       const now = new Date();
@@ -167,6 +176,16 @@ module.exports = (io, prisma) => {
             tableNumber: table.tableNumber,
             elapsedMinutes: Math.round(elapsed),
           });
+          const key = `${table.id}:${new Date(table.statusChangedAt).getTime()}`;
+          if (!dispatchedTimer120.has(key)) {
+            dispatchedTimer120.add(key);
+            dispatchAsync(prisma, io, {
+              event: EVENTS.TABLE_TIMER_120_EXPIRED,
+              restaurantId: table.restaurantId,
+              tableNumber: table.tableNumber,
+              elapsedMinutes: Math.round(elapsed),
+            });
+          }
         }
       }
 
@@ -183,6 +202,17 @@ module.exports = (io, prisma) => {
             tableNumber: table.tableNumber,
             waitingMinutes: Math.round(elapsed),
           });
+          const bucket = Math.floor(elapsed / 15) * 15;
+          const key = `${table.id}:${new Date(table.statusChangedAt).getTime()}:${bucket}`;
+          if (!dispatchedTimerAwaiting.has(key)) {
+            dispatchedTimerAwaiting.add(key);
+            dispatchAsync(prisma, io, {
+              event: EVENTS.TABLE_AWAITING_15_REMINDER,
+              restaurantId: table.restaurantId,
+              tableNumber: table.tableNumber,
+              waitingMinutes: Math.round(elapsed),
+            });
+          }
         }
       }
 
@@ -206,7 +236,14 @@ module.exports = (io, prisma) => {
           time: res.time,
           partySize: res.partySize,
         });
-        // TODO: Also send push notification + SMS via notification service
+        dispatchAsync(prisma, io, {
+          event: EVENTS.RESERVATION_REMINDER_45,
+          userId: res.userId,
+          restaurantId: res.restaurantId,
+          date: res.date,
+          time: res.time,
+          partySize: res.partySize,
+        });
       }
 
     } catch (error) {

@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { authenticateRestaurant } = require('../middleware/auth');
+const { EVENTS, dispatchAsync } = require('../services/notifications');
 
 const router = express.Router();
 
@@ -350,8 +351,16 @@ router.put(
         },
       });
 
-      // TODO: Emit socket event
-      // io.to(`restaurant_${restaurantId}`).emit('reservation_confirmed', updated);
+      if (updated.userId) {
+        dispatchAsync(prisma, req.app.get('io'), {
+          event: EVENTS.RESERVATION_CONFIRMED,
+          userId: updated.userId,
+          restaurantId,
+          date: updated.date,
+          time: updated.time,
+          partySize: updated.partySize,
+        });
+      }
 
       res.json(updated);
     } catch (error) {
@@ -405,8 +414,15 @@ router.put(
         },
       });
 
-      // TODO: Emit socket event
-      // io.to(`restaurant_${restaurantId}`).emit('reservation_rejected', updated);
+      if (updated.userId) {
+        dispatchAsync(prisma, req.app.get('io'), {
+          event: EVENTS.RESERVATION_REJECTED,
+          userId: updated.userId,
+          restaurantId,
+          date: updated.date,
+          time: updated.time,
+        });
+      }
 
       res.json(updated);
     } catch (error) {
@@ -509,6 +525,16 @@ router.put(
           cancelledBy: 'restaurant',
         },
       });
+
+      if (updated.userId) {
+        dispatchAsync(prisma, req.app.get('io'), {
+          event: EVENTS.RESERVATION_CANCELLED_BY_RESTAURANT,
+          userId: updated.userId,
+          restaurantId,
+          date: updated.date,
+          time: updated.time,
+        });
+      }
 
       res.json(updated);
     } catch (error) {
@@ -784,7 +810,7 @@ router.put(
       }
 
       // Update the reservation with the new values
-      await prisma.reservation.update({
+      const reservationAfter = await prisma.reservation.update({
         where: { id: modification.reservationId },
         data: updateData,
       });
@@ -797,6 +823,17 @@ router.put(
           resolvedAt: new Date(),
         },
       });
+
+      if (reservationAfter.userId) {
+        dispatchAsync(prisma, req.app.get('io'), {
+          event: EVENTS.MODIFICATION_APPROVED,
+          userId: reservationAfter.userId,
+          restaurantId,
+          date: reservationAfter.date,
+          time: reservationAfter.time,
+          partySize: reservationAfter.partySize,
+        });
+      }
 
       res.json(updated);
     } catch (error) {
@@ -822,6 +859,7 @@ router.put(
           id,
           reservation: { restaurantId },
         },
+        include: { reservation: { select: { id: true, userId: true, date: true, time: true } } },
       });
 
       if (!modification) {
@@ -835,6 +873,16 @@ router.put(
           resolvedAt: new Date(),
         },
       });
+
+      if (modification.reservation && modification.reservation.userId) {
+        dispatchAsync(prisma, req.app.get('io'), {
+          event: EVENTS.MODIFICATION_REJECTED,
+          userId: modification.reservation.userId,
+          restaurantId,
+          date: modification.reservation.date,
+          time: modification.reservation.time,
+        });
+      }
 
       res.json(updated);
     } catch (error) {

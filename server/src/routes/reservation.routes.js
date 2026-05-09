@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { authenticateUser } = require('../middleware/auth');
+const { EVENTS, dispatchAsync } = require('../services/notifications');
 
 const router = express.Router();
 
@@ -224,6 +225,29 @@ router.post(
         },
       });
 
+      const io = req.app.get('io');
+      // Diner-side notification only fires for auto-confirmed; pending bookings
+      // get the diner notification later when staff confirms or rejects.
+      if (reservation.status === 'AUTO_CONFIRMED') {
+        dispatchAsync(prisma, io, {
+          event: EVENTS.RESERVATION_AUTO_CONFIRMED,
+          userId,
+          restaurantId,
+          date: reservation.date,
+          time: reservation.time,
+          partySize: reservation.partySize,
+        });
+      }
+      // Restaurant always sees a new reservation appear, auto or pending.
+      dispatchAsync(prisma, io, {
+        event: EVENTS.RESERVATION_REQUEST_NEW,
+        restaurantId,
+        userId,
+        date: reservation.date,
+        time: reservation.time,
+        partySize: reservation.partySize,
+      });
+
       res.status(201).json(reservation);
     } catch (error) {
       next(error);
@@ -373,6 +397,14 @@ router.put(
         },
       });
 
+      dispatchAsync(prisma, req.app.get('io'), {
+        event: EVENTS.RESERVATION_CANCELLED_BY_DINER,
+        restaurantId: reservation.restaurantId,
+        userId,
+        date: reservation.date,
+        time: reservation.time,
+      });
+
       res.json(cancelled);
     } catch (error) {
       next(error);
@@ -426,6 +458,19 @@ router.post(
           status: true,
           createdAt: true,
         },
+      });
+
+      const detailParts = [];
+      if (modification.requestedDate) detailParts.push(`date → ${new Date(modification.requestedDate).toISOString().slice(0, 10)}`);
+      if (modification.requestedTime) detailParts.push(`time → ${modification.requestedTime}`);
+      if (modification.requestedPartySize) detailParts.push(`party → ${modification.requestedPartySize}`);
+      dispatchAsync(prisma, req.app.get('io'), {
+        event: EVENTS.MODIFICATION_REQUESTED,
+        restaurantId: reservation.restaurantId,
+        userId,
+        date: reservation.date,
+        time: reservation.time,
+        details: detailParts.join(', '),
       });
 
       res.status(201).json(modification);
