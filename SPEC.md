@@ -683,6 +683,9 @@ These are tracked here until they're fixed; remove entries when each is resolved
 **Accepted MVP tradeoffs (no action):**
 - ~~Native `<input type="time">` AM/PM rendering in entry forms~~ — Chrome ignores `lang="en-GB"` and renders the picker in the OS locale. Display formatting (`formatTime()`) is correct everywhere it matters; entry pickers stay native. Accepted per Decisions log 2026-05-09 — a custom `Time24Input` component would fix it cleanly but is beyond MVP polish. The CSS-pseudo-element workaround in commit `83ec3f6` was reverted because it broke PM entry.
 
+**Resolved by Tier C2 (2026-05-09):**
+- ~~Email transport stub~~ — `server/src/services/notifications/channels/email.js` now sends via the Resend SDK using `RESEND_API_KEY` / `RESEND_FROM_EMAIL` / `RESEND_FROM_NAME` from `server/.env`. Falls back to console.log with a one-time warning when the key is missing (dev environments don't crash). Failures from Resend are logged but don't propagate past the dispatcher, so a bad email can't break the calling flow. Unblocks the email pieces of §5.9 (account-deletion confirmation), §6.8 (staff forgot-password reset), and §7.1 (admin staff-credentials handoff) — those flows still need their own wiring in Tier D and admin polish.
+
 **Still open after Phase 2 audit (2026-04-30):**
 - **Calendar doesn't show walk-ins or current occupation state.** §6.4 updated — calendar must display all table activity including walk-ins and currently-occupied state, not just reservation blocks. Schema needs new `TableActivity` model; see Phase 3 plan.
 - **§9.3 auto-confirm uses `gte`, not exact seat-match.** `server/src/routes/reservation.routes.js:128` filters `seatCount: { gte: pSize }`. Spec mandates `seatCount === partySize`. Currently a 4-person party with no exact 4-seat free table can be auto-confirmed onto a 6-seat table.
