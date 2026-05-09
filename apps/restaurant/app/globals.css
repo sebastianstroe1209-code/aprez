@@ -48,6 +48,18 @@ textarea:focus {
   @apply outline-none ring-2 ring-primary ring-opacity-50;
 }
 
+/* Force 24h time inputs across the app. Chrome ignores `lang="en-GB"` on
+ * <input type="time"> and uses the OS locale, which yields 12h AM/PM on
+ * en-US machines. Hide the AM/PM segment so what staff sees matches the
+ * HH:mm value the form actually submits. The hour-field padding tweak
+ * removes the gap that would otherwise sit where AM/PM used to be. SPEC §11. */
+input[type='time']::-webkit-datetime-edit-ampm-field {
+  display: none;
+}
+input[type='time']::-webkit-datetime-edit-hour-field {
+  padding-right: 0;
+}
+
 button {
   font-family: inherit;
   cursor: pointer;
