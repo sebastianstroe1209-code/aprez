@@ -558,7 +558,7 @@ All templates exist in both Romanian and English (see §11).
 - All UI labels, buttons, system messages translated.
 
 ### Locale formats
-- **Time format: 24-hour (`HH:mm`)** for both Romanian and English. No AM/PM anywhere in the UI. (Romanian standard; English UI follows the same for consistency.)
+- **Time format: 24-hour (`HH:mm`)** for all DISPLAYED times across the app — Reservations list, Calendar grid, mobile My Reservations, etc. — using the centralized `formatTime()` helper. Native browser time inputs in entry forms (admin restaurant-create/edit, manual-reservation modal) may render in the user's browser locale (12-hour AM/PM in some browsers); the underlying form value still submits `HH:mm`. Accepted MVP tradeoff — see Decisions log 2026-05-09.
 - **Date format: `DD-MM-YYYY`** (Romanian / European standard). Examples: `30-04-2026`, `15-06-2026`.
 - **Currency:** RON, displayed as `1 RON` or `120 RON` (no decimals for whole amounts).
 - **Timezone:** all backend timestamps stored UTC; all display in **Europe/Bucharest**. No silent UTC display anywhere.
@@ -603,7 +603,7 @@ A feature is not done unless **every** box is checked:
 8. **No console errors** in browser/Metro when navigating the flow.
 9. **Spec match** — behavior matches this `SPEC.md`. If there's a conflict, surface it; don't silently change either side.
 10. **Bilingual** — UI strings go through the i18n layer (Romanian primary, English secondary). No hardcoded English in UI strings.
-11. **Locale-correct** — all dates `DD-MM-YYYY`, all times 24-hour `HH:mm`, all timezones Europe/Bucharest in display.
+11. **Locale-correct** — all dates `DD-MM-YYYY`, all DISPLAYED times 24-hour `HH:mm` via `formatTime()`, all timezones Europe/Bucharest in display. Native browser time-input pickers in entry forms may render in browser locale (12h AM/PM in some browsers) — accepted MVP tradeoff per Decisions log 2026-05-09.
 12. **Manual visual smoke-test passed** — for any UI change, open the app in a real browser, walk the flow, confirm correctness. API-only smoke tests are necessary but not sufficient.
 
 ---
@@ -655,6 +655,10 @@ Append-only record of product decisions made since the v1 docx. Each entry: date
 **Decision:** consolidate the original docx and `MVP_SCOPE.md` into this single `SPEC.md`. Original docx is preserved in the repo as `ApRez FULL DOC MVP1.docx` for reference but **superseded** by this file. `MVP_SCOPE.md` is archived.
 **Rationale:** dual-source design caused real bugs (table moving missing, menu/photo upload missing) because items in the docx but not the .md fell through the cracks.
 
+### 2026-05-09: Accept native time-input rendering in entry forms
+**Decision:** Stop trying to force 24-hour rendering on native `<input type="time">`. Display formatting (Reservations rows, Calendar columns, etc.) remains 24-hour via `formatTime()`. Entry forms accept browser-native picker which may show AM/PM.
+**Rationale:** `lang="en-GB"` attribute is not honored by Chrome on this build; CSS `::-webkit` pseudo-element hack (commit `83ec3f6`, now reverted) hid the AM/PM picker but didn't convert hour display, breaking PM entry. A custom `Time24Input` component would fix it cleanly but costs more engineering than the polish is worth at MVP. Form values are unaffected (always `HH:mm` to backend).
+
 ---
 
 ## 15. Known gaps & bugs to fix
@@ -675,6 +679,9 @@ These are tracked here until they're fixed; remove entries when each is resolved
 
 **Resolved by audit (no code change needed):**
 - ~~AM/PM display bug~~ — comprehensive source + rendered-HTML grep (2026-04-30) found zero unsafe formatters in any frontend. Phase 1's `formatTime()` covered every path. Earlier observation was stale browser cache. Hard-refresh tabs.
+
+**Accepted MVP tradeoffs (no action):**
+- ~~Native `<input type="time">` AM/PM rendering in entry forms~~ — Chrome ignores `lang="en-GB"` and renders the picker in the OS locale. Display formatting (`formatTime()`) is correct everywhere it matters; entry pickers stay native. Accepted per Decisions log 2026-05-09 — a custom `Time24Input` component would fix it cleanly but is beyond MVP polish. The CSS-pseudo-element workaround in commit `83ec3f6` was reverted because it broke PM entry.
 
 **Still open after Phase 2 audit (2026-04-30):**
 - **Calendar doesn't show walk-ins or current occupation state.** §6.4 updated — calendar must display all table activity including walk-ins and currently-occupied state, not just reservation blocks. Schema needs new `TableActivity` model; see Phase 3 plan.

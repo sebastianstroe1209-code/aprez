@@ -141,6 +141,7 @@ A feature is not done unless **every** box is checked:
 8. **No console errors** in browser/Metro when navigating the flow.
 9. **Spec match** — behavior matches `ApRez FULL DOC MVP1.docx`. If there's a conflict, surface it; don't silently change either.
 10. **Bilingual** — UI strings go through the i18n layer (Romanian primary, English secondary). No hardcoded English in UI.
+11. **Locale-correct** — all dates `DD-MM-YYYY`, all DISPLAYED times 24-hour `HH:mm` via `formatTime()`, all timezones Europe/Bucharest in display. Native browser time-input pickers in entry forms may render in browser locale (12h AM/PM in some browsers) — accepted MVP tradeoff per `SPEC.md` Decisions log 2026-05-09.
 
 For Claude Code: when implementing a feature, write the DoD checklist as comments at the top of the PR/commit message and tick them off.
 
