@@ -455,11 +455,26 @@ export default function ReservationsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm">
-                      {res.table?.tableNumber
-                        ? res.table.tableNumber
-                        : (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED')
-                          ? <span className="text-orange-600 italic">{t('reservations.unassignedTable')}</span>
-                          : '-'}
+                      {res.table?.tableNumber ? (
+                        <span className="flex items-center gap-1 flex-wrap">
+                          <span>{res.table.tableNumber}</span>
+                          {/* Tier I commit 3 — inline merge tag when the
+                              row's tableId belongs to an active merge
+                              whose window covers the reservation's time.
+                              Uses the combined label so the row reads
+                              the same as the popup header chip. */}
+                          {res.mergeBinding && (
+                            <span
+                              className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[11px] font-semibold border border-amber-300"
+                              title={res.mergeBinding.combinedLabel}
+                            >
+                              merged: {res.mergeBinding.combinedLabel}
+                            </span>
+                          )}
+                        </span>
+                      ) : (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED')
+                        ? <span className="text-orange-600 italic">{t('reservations.unassignedTable')}</span>
+                        : '-'}
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {res.status === 'PENDING' && (

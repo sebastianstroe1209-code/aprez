@@ -4,7 +4,26 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-17. Tier I commit 2 fix-the-fix #4 SHIPPED — OverrideConfirmModal now actually reachable from soft-ineligible card click (not just a window.alert with the raw backend string).** Cowork manual QA caught that the click handler in confirm-mode surfaced a browser alert instead of the localized modal, despite all the prior fix-the-fixes wiring the modal component itself.
+**Last session: 2026-05-17. Tier I COMPLETE end-to-end — commit 3 (calendar propagation + edge polish) SHIPPED. SPEC §8.2 fully resolved. Override flow + drag UX + calendar wiring + auto-deactivate lifecycle hooks all green across the full regression battery.**
+
+Tier I commit 3 details:
+- **Calendar** (`apps/restaurant/app/dashboard/calendar/page.js`): merged-reservation blocks render an amber `+T3` badge inside the existing single-column block (decision 4 — no grid math change). Tooltip on the badge shows the full combined label ("T1+T3").
+- **Reservations page** (`apps/restaurant/app/dashboard/reservations/page.js`): Table column appends `merged: T1+T3` amber pill when `res.mergeBinding != null`.
+- **`/availability` endpoint** promoted: `suggestionForCombining` is now derived from a new `mergeSuggestions: [{tableIds, memberLabels, combinedLabel, summedSeatCount, freeNeighborCount}, ...]` array (top 3). Helper `computeMergeSuggestions()` walks BFS-grown adjacency frontiers up to MAX_MERGE_MEMBERS=4, ranks by (smallest viable merge first, highest freeNeighborCount, tightest fit).
+- **`/restaurant/reservations` list** gains per-row `mergeBinding: { groupId, combinedLabel, memberLabels, otherMemberLabels, summedSeatCount } | null`. Single batched query for active TableMove rows + their group members; in-memory join on `timeRangesOverlap(move.time, res.time)`. `otherMemberLabels` excludes the row's own table label.
+- **Auto-deactivate hooks were already wired in I1** via `deactivateMergesForReservation()` at `server/src/lib/tableMerges.js`. Tier I3 smoke verifies all four lifecycle sites (restaurant cancel/complete/no-show + diner cancel) — bound merges deactivate; pre-planned merges (reservationId=null) survive unrelated reservation cancels (smoke [h]).
+
+**Smoke results**: smoke-tieri3.js 38/38 paths PASS across the 8 scenarios.
+
+**Full regression battery green**: c6-assign-table-override-wiring 14/14, c6-live-grid-layout 18/18, c6-popup-actions 19/19, c1-dispatcher 12/12, Tier I1 12/12, Tier I3 38/38, Tier E1 31/31, Tier E2 33/33, Tier F2 24/24, Tier D2 22/22.
+
+**QA fixture cleaned** — reservation `4577ea13-...` CANCELLED, section `7c09e62a-...` + 9 tables deleted via the F2 endpoint (with the TableMove pre-purge workaround for the FK KNOWN ISSUE still deferred to Tier J).
+
+**Tier G (cleanup pile from SPEC §15 still-open list) waits for Sebastian's approval.** Open items: §3.1 +40 phone format validation gap on `/auth/register` (E1 fixed `/modify` but not register), §3.2 30-day reservation pruning cron, §3.4 OTP routes still mounted (delete), §6.7 staff Manage Profile photos/menu/auto-confirm toggle, §7.6 auto-confirm toggle UI per §6.7, §8.1 "Arriving Soon" auto-transition cron, §8.1 Awaiting Guest auto-transition + 15-min recurring reminder, §8.1 120-min Occupied timer + expiry alert, §9.3 auto-confirm picker "most free neighbors" + exact-seat-match fix (deferred from Tier I plan), `TableMove.tableId` FK cascade fix (KNOWN ISSUE blocking smooth section-delete on tables with merge history), admin Analytics + Billing dead-code deletion (§7.4 + §7.5 cut from MVP), waitlist server routes + schema removal (cut from MVP), the `MODIFICATION_PENDING` enum value (deprecated dead code, kept).
+
+**Earlier this session:**
+
+Tier I commit 2 fix-the-fix #4 SHIPPED — OverrideConfirmModal now actually reachable from soft-ineligible card click (not just a window.alert with the raw backend string).** Cowork manual QA caught that the click handler in confirm-mode surfaced a browser alert instead of the localized modal, despite all the prior fix-the-fixes wiring the modal component itself.
 
 **Root cause.** The restaurant app's `apps/restaurant/lib/api.js` `handleResponse` threw a bare `new Error(msg)` without attaching `err.payload` + `err.status`. The live-page catch at `handleAssignFromConfirm` reads `err?.payload?.error?.code` — always undefined → branch always missed → fell through to `alert('Failed to assign table: ' + err.message)`. The **admin** app got `err.payload` attachment in Tier F2 (commit `d2fea93`), but the **restaurant** equivalent was never patched. Two parallel api.js files, only one fixed.
 

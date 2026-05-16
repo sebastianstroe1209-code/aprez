@@ -128,6 +128,86 @@ router.get(
         orderBy: [{ date: 'asc' }, { time: 'asc' }],
       });
 
+      // Tier I commit 3 — surface merge binding per reservation row.
+      // When the reservation's tableId is part of an active merge group
+      // whose window covers the reservation's time, the calendar block
+      // and reservations row need to display the combined label. One
+      // batched query fetches every merge for any tableId in the
+      // result set; we filter to overlapping windows in-memory.
+      const tableIds = reservations.map((r) => r.tableId).filter(Boolean);
+      let mergesByTableId = new Map(); // tableId → merge sub-object
+      if (tableIds.length > 0) {
+        const activeMoves = await prisma.tableMove.findMany({
+          where: {
+            isActive: true,
+            mergeGroupId: { not: null },
+            tableId: { in: tableIds },
+          },
+          select: {
+            mergeGroupId: true, tableId: true,
+            timeStart: true, timeEnd: true, date: true,
+          },
+        });
+        // For each (tableId, reservation.time/endTime), check if there's
+        // an overlapping merge. Pull all members of matching groups.
+        const matchingGroupIds = new Set();
+        for (const r of reservations) {
+          if (!r.tableId) continue;
+          const move = activeMoves.find((m) =>
+            m.tableId === r.tableId &&
+            m.date.getTime() === new Date(r.date).getTime() &&
+            timeRangesOverlap(m.timeStart, m.timeEnd, r.time, r.endTime)
+          );
+          if (move) matchingGroupIds.add(move.mergeGroupId);
+        }
+        if (matchingGroupIds.size > 0) {
+          const groupMembers = await prisma.tableMove.findMany({
+            where: { mergeGroupId: { in: [...matchingGroupIds] }, isActive: true },
+            include: { table: { select: { id: true, tableNumber: true, seatCount: true } } },
+          });
+          // Build per-group metadata.
+          const groupMeta = new Map(); // groupId → { combinedLabel, memberLabels, summedSeatCount, memberTableIds }
+          for (const row of groupMembers) {
+            if (!groupMeta.has(row.mergeGroupId)) {
+              groupMeta.set(row.mergeGroupId, { members: [] });
+            }
+            groupMeta.get(row.mergeGroupId).members.push(row.table);
+          }
+          for (const [groupId, meta] of groupMeta.entries()) {
+            const sortedLabels = meta.members.map((m) => m.tableNumber).sort((a, b) => {
+              const na = parseInt(String(a).replace(/^T/i, ''), 10);
+              const nb = parseInt(String(b).replace(/^T/i, ''), 10);
+              if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+              return String(a).localeCompare(String(b));
+            });
+            meta.combinedLabel = sortedLabels.join('+');
+            meta.memberLabels = sortedLabels;
+            meta.summedSeatCount = meta.members.reduce((acc, m) => acc + (m.seatCount || 0), 0);
+            meta.memberTableIds = meta.members.map((m) => m.id);
+          }
+          for (const r of reservations) {
+            if (!r.tableId) continue;
+            const move = activeMoves.find((m) =>
+              m.tableId === r.tableId &&
+              m.date.getTime() === new Date(r.date).getTime() &&
+              timeRangesOverlap(m.timeStart, m.timeEnd, r.time, r.endTime)
+            );
+            if (!move || !groupMeta.has(move.mergeGroupId)) continue;
+            const meta = groupMeta.get(move.mergeGroupId);
+            // otherMembers: labels EXCLUDING this row's table (so the
+            // calendar block in T1's column can read "+T3" not "T1+T3").
+            const selfLabel = meta.members.find((m) => m.id === r.tableId)?.tableNumber;
+            mergesByTableId.set(r.id, {
+              groupId: move.mergeGroupId,
+              combinedLabel: meta.combinedLabel,
+              memberLabels: meta.memberLabels,
+              otherMemberLabels: meta.memberLabels.filter((l) => l !== selfLabel),
+              summedSeatCount: meta.summedSeatCount,
+            });
+          }
+        }
+      }
+
       // Flatten: client expects modificationPending: row | null, not an
       // array. Keep `modifications` off the wire — the popup + tab only
       // need to know if there's one pending.
@@ -136,6 +216,7 @@ router.get(
         return {
           ...rest,
           modificationPending: modifications && modifications[0] ? modifications[0] : null,
+          mergeBinding: mergesByTableId.get(r.id) || null,
         };
       });
 
@@ -2162,8 +2243,33 @@ router.get(
         select: { id: true, seatCount: true },
       });
 
+      // Tier I commit 3 — promote suggestionForCombining from boolean
+      // to a concrete list of merge candidates. The Quick Add UI can
+      // then prompt staff to merge specific tables rather than just
+      // "figure it out yourself." Computed by walking every adjacent
+      // pair/triple/quad (up to MAX_MERGE_MEMBERS) of FREE tables in
+      // the same section that haven't been booked in this window, then
+      // ranking by free-neighbor count (more adjacencies = more
+      // combining flexibility for the next reservation). Top 3 returned.
+      const allActiveTables = await prisma.restaurantTable.findMany({
+        where: {
+          restaurantId,
+          isActive: true,
+          status: { notIn: ['OCCUPIED', 'OUT_OF_SERVICE'] },
+        },
+        select: { id: true, tableNumber: true, seatCount: true, gridRow: true, gridCol: true, sectionId: true },
+      });
+
       if (candidates.length === 0) {
-        return res.json({ exactMatchCount: 0, anyMatchCount: 0, suggestionForCombining: true });
+        // Even if no single table is ≥ pSize, suggest merges from the
+        // wider candidate pool.
+        const suggestions = await computeMergeSuggestions(prisma, restaurantId, allActiveTables, new Date(date), time, endTime, pSize);
+        return res.json({
+          exactMatchCount: 0,
+          anyMatchCount: 0,
+          suggestionForCombining: suggestions.length > 0,
+          mergeSuggestions: suggestions,
+        });
       }
 
       const conflicting = await prisma.reservation.findMany({
@@ -2184,14 +2290,134 @@ router.get(
       const free = candidates.filter((t) => !conflictSet.has(t.id));
       const exactMatchCount = free.filter((t) => t.seatCount === pSize).length;
       const anyMatchCount = free.length;
+
+      // Always compute merge candidates so the UI can show alternatives
+      // even when an exact-match table exists (helps staff plan around
+      // adjacent free runs that they'd rather keep for a larger party).
+      const mergeSuggestions = await computeMergeSuggestions(prisma, restaurantId, allActiveTables, new Date(date), time, endTime, pSize);
       const suggestionForCombining = anyMatchCount === 0;
 
-      res.json({ exactMatchCount, anyMatchCount, suggestionForCombining });
+      res.json({ exactMatchCount, anyMatchCount, suggestionForCombining, mergeSuggestions });
     } catch (error) {
       next(error);
     }
   }
 );
+
+// Tier I commit 3 helper — enumerate adjacent table groupings that
+// together seat ≥ pSize, ranked by free-neighbor count. Reuses the
+// shared adjacency check from lib/tableMerges.js so the BFS stays in
+// one place. Caller has already filtered tables by status; this fn
+// additionally excludes tables booked in the requested time window.
+async function computeMergeSuggestions(prisma, restaurantId, tables, dateObj, timeStart, timeEnd, partySize) {
+  if (!Array.isArray(tables) || tables.length < 2) return [];
+
+  // Pull reservations in the window for ALL tables (not just
+  // candidates), since the candidate filter dropped tables with
+  // seatCount < partySize and those might still be valid merge
+  // members.
+  const conflicting = await prisma.reservation.findMany({
+    where: {
+      restaurantId,
+      date: dateObj,
+      tableId: { in: tables.map((t) => t.id) },
+      status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
+      AND: [{ time: { lt: timeEnd } }, { endTime: { gt: timeStart } }],
+    },
+    select: { tableId: true },
+  });
+  const conflictSet = new Set(conflicting.map((c) => c.tableId));
+  const free = tables.filter((t) => !conflictSet.has(t.id));
+
+  // Build a per-section adjacency map: tableId → adjacent tableIds.
+  const bySection = new Map();
+  for (const t of free) {
+    if (!bySection.has(t.sectionId)) bySection.set(t.sectionId, []);
+    bySection.get(t.sectionId).push(t);
+  }
+  const adjacency = new Map(); // tableId → Set of adjacent tableIds
+  for (const sectionTables of bySection.values()) {
+    const byCell = new Map(sectionTables.map((t) => [`${t.gridRow},${t.gridCol}`, t]));
+    for (const t of sectionTables) {
+      const neighbors = [
+        byCell.get(`${t.gridRow - 1},${t.gridCol}`),
+        byCell.get(`${t.gridRow + 1},${t.gridCol}`),
+        byCell.get(`${t.gridRow},${t.gridCol - 1}`),
+        byCell.get(`${t.gridRow},${t.gridCol + 1}`),
+      ].filter(Boolean);
+      adjacency.set(t.id, new Set(neighbors.map((n) => n.id)));
+    }
+  }
+
+  // Free-neighbor count per table — used to rank candidates that hit
+  // the partySize target equally. More free neighbors = more
+  // combining flexibility going forward.
+  const freeNeighborCount = (tableId) => (adjacency.get(tableId)?.size || 0);
+
+  // BFS-grow adjacent groups up to MAX_MERGE_MEMBERS (4 per SPEC §8.2)
+  // starting from each free table. Dedupe by sorted-id signature.
+  const seen = new Set();
+  const candidates = [];
+  const MAX = 4;
+  for (const start of free) {
+    // Frontier of partial groups: [{ ids: Set, seats: number }]
+    let frontier = [{ ids: new Set([start.id]), seats: start.seatCount }];
+    for (let depth = 1; depth < MAX; depth++) {
+      const next = [];
+      for (const g of frontier) {
+        // For each existing member, try every adjacent table not
+        // already in the group.
+        for (const memberId of g.ids) {
+          const adj = adjacency.get(memberId);
+          if (!adj) continue;
+          for (const adjId of adj) {
+            if (g.ids.has(adjId)) continue;
+            const newIds = new Set(g.ids);
+            newIds.add(adjId);
+            const adjTable = free.find((t) => t.id === adjId);
+            if (!adjTable) continue;
+            next.push({ ids: newIds, seats: g.seats + adjTable.seatCount });
+          }
+        }
+      }
+      frontier = frontier.concat(next);
+    }
+    for (const g of frontier) {
+      if (g.ids.size < 2) continue; // single-table "merges" aren't merges
+      if (g.seats < partySize) continue;
+      const sig = [...g.ids].sort().join('|');
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+      const members = [...g.ids].map((id) => free.find((t) => t.id === id)).filter(Boolean);
+      // Sort member labels for a stable combinedLabel.
+      const sortedNumbers = members.map((m) => m.tableNumber).sort((a, b) => {
+        const na = parseInt(String(a).replace(/^T/i, ''), 10);
+        const nb = parseInt(String(b).replace(/^T/i, ''), 10);
+        if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+        return String(a).localeCompare(String(b));
+      });
+      // Rank score: prefer smaller merges (fewer tables → less impact),
+      // then more total free neighbors among members (flexibility).
+      const totalFreeNeighbors = members.reduce((acc, m) => acc + freeNeighborCount(m.id), 0);
+      candidates.push({
+        tableIds: [...g.ids],
+        memberLabels: sortedNumbers,
+        combinedLabel: sortedNumbers.join('+'),
+        summedSeatCount: g.seats,
+        freeNeighborCount: totalFreeNeighbors,
+      });
+    }
+  }
+  // Ranking: fewer members first (smallest viable merge wins ties),
+  // then higher free-neighbor count (combining flexibility), then
+  // smaller summedSeatCount (tighter fit to the party). Return top 3.
+  candidates.sort((a, b) => {
+    if (a.tableIds.length !== b.tableIds.length) return a.tableIds.length - b.tableIds.length;
+    if (a.freeNeighborCount !== b.freeNeighborCount) return b.freeNeighborCount - a.freeNeighborCount;
+    return a.summedSeatCount - b.summedSeatCount;
+  });
+  return candidates.slice(0, 3);
+}
 
 // Waitlist routes (GET /waitlist, /waitlist/suggestions, POST /waitlist/:id/notify,
 // DELETE /waitlist/:id) removed — SPEC §6.6 cuts the waitlist system entirely.

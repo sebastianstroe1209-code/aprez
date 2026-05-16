@@ -685,6 +685,37 @@ These are tracked here until they're fixed; remove entries when each is resolved
 **Accepted MVP tradeoffs (no action):**
 - ~~Native `<input type="time">` AM/PM rendering in entry forms~~ — Chrome ignores `lang="en-GB"` and renders the picker in the OS locale. Display formatting (`formatTime()`) is correct everywhere it matters; entry pickers stay native. Accepted per Decisions log 2026-05-09 — a custom `Time24Input` component would fix it cleanly but is beyond MVP polish. The CSS-pseudo-element workaround in commit `83ec3f6` was reverted because it broke PM entry.
 
+**Resolved by Tier I commit 3 (2026-05-17):** Tier I now FULLY COMPLETE end-to-end — calendar propagation, availability hint promotion, reservations-row mergeBinding, and the lifecycle auto-deactivate hooks all green.
+- **Calendar view (apps/restaurant/app/dashboard/calendar/page.js)**: when a reservation is bound to an active merge whose window covers the reservation's time, the block in its assigned table's column renders an amber `+T3` badge (only the OTHER member labels, not its own) with the full `combinedLabel` ("T1+T3") in the `title` tooltip. Per decision 4: block stays single-column, no grid math change.
+- **Reservations page (apps/restaurant/app/dashboard/reservations/page.js)**: Table column renders the row's `tableNumber` plus an inline `merged: T1+T3` tag (amber pill, `border-amber-300`) when `res.mergeBinding != null`. Matches the row pattern; no new column.
+- **Quick Add availability hint promoted from boolean to array**. `GET /api/restaurant/availability` now returns:
+  ```jsonc
+  {
+    exactMatchCount: number,
+    anyMatchCount: number,
+    suggestionForCombining: boolean,        // legacy: true iff mergeSuggestions.length > 0
+    mergeSuggestions: [{
+      tableIds: string[],                   // member UUIDs
+      memberLabels: string[],               // sorted tableNumbers
+      combinedLabel: "T1+T3",               // join('+') of memberLabels
+      summedSeatCount: number,              // sum of member seatCount
+      freeNeighborCount: number             // total free adjacents across members — combining flexibility score
+    }, …]                                   // top 3 ranked by: smallest viable merge first, then highest freeNeighborCount, then tightest fit
+  }
+  ```
+  Ranking: fewer members beats more (smallest viable merge wins ties), then higher freeNeighborCount (more combining flexibility), then smaller summedSeatCount (tighter fit to party). Helper `computeMergeSuggestions()` walks BFS-grown adjacency frontiers up to `MAX_MERGE_MEMBERS=4`, dedupes by sorted-id signature, filters to groups summing ≥ partySize.
+- **`/restaurant/reservations` list payload** gains a per-row `mergeBinding: { groupId, combinedLabel, memberLabels, otherMemberLabels, summedSeatCount } | null`. The backend resolves each row's `tableId` against active TableMove rows whose window overlaps the reservation's `[time, endTime)`, then batched-fetches all member metadata for any matching groupId. `otherMemberLabels` excludes the row's own table label so the calendar block can render "+T3" without echoing its own column header.
+- **Auto-deactivate on reservation lifecycle was already wired in I1** via `deactivateMergesForReservation(prisma, reservationId)` (helper at `server/src/lib/tableMerges.js`). Tier I3 smoke verifies the wiring is intact across the four call sites:
+  - `PUT /api/restaurant/reservations/:id/cancel` (restaurant staff cancel)
+  - `PUT /api/restaurant/reservations/:id/complete`
+  - `PUT /api/restaurant/reservations/:id/no-show`
+  - `PUT /api/reservations/:id/cancel` (diner cancel)
+  - `POST /api/reservations/:id/modifications/:modId/ack` action=cancel (diner ack-cancel — also covered by E2)
+  Pattern: the lifecycle handler calls `deactivateMergesForReservation` after the reservation update + before the socket emit. Not a single `prisma.$transaction` with the update (the helper does its own `updateMany`), but emits a `table:unmerged` socket event with `reason: 'reservation-cancelled' | '-completed' | '-no-show'` per affected group so subscribers re-render. **Pre-planned merges (`reservationId: null`) are NOT touched** — verified by smoke [h]: a pre-merge survives the cancel of an unrelated reservation in the same restaurant. End-of-day cron cleanup of pre-merges deferred to Tier J.
+- **End-to-end backend smoke 8 paths green** (`server/scripts/smoke-tieri3.js`): [a] availability mergeSuggestions shape, [b] empty suggestions when no adjacency fits, [c] /reservations mergeBinding per row, [d/e/f] restaurant cancel/complete/no-show auto-deactivate, [g] diner cancel auto-deactivates, [h] pre-planned merge survives unrelated cancel.
+- **Regression battery all green**: c6-assign-table-override-wiring 14/14, c6-live-grid-layout 18/18, c6-popup-actions 19/19, c1-dispatcher 12/12, Tier I1 12/12, Tier E1 31/31, Tier E2 33/33, Tier F2 24/24, Tier D2 22/22.
+- **Cleanup confirmed**: lingering QA debris (section `7c09e62a-...` + reservation `4577ea13-...`) removed via the canonical cleanup script — reservation CANCELLED, section + 9 tables deleted via the F2 endpoint with the TableMove pre-purge workaround. KNOWN ISSUE on `TableMove.tableId` FK still deferred to Tier J.
+
 **Partially resolved by Tier I commit 2 (2026-05-16):**
 - **§8.2 Table moving / combining — drag UI + override modal landed on Live.** I1 shipped the data model + endpoints (zero UI); I2 wires the drag UX, the merged-card render, and the party-too-large override modal. I3 (calendar propagation + edge polish) is still pending.
   - **Live page two-pass render** (`apps/restaurant/app/dashboard/live/page.js`):
@@ -882,7 +913,7 @@ These are tracked here until they're fixed; remove entries when each is resolved
 - **§8.1 "Arriving Soon" auto-transition** — Green → Orange one hour before a reservation. Cron job. Verify in floor plan that orange shows up automatically for upcoming reservations.
 - **§8.1 Awaiting Guest auto-transition + 15-min recurring reminder.**
 - **§8.1 120-min Occupied timer + expiry alert.**
-- **§8.2 Table moving / combining** in LIVE mode. Drag-to-merge, sum seat counts, time-block scoped.
+<!-- §8.2 Table moving / combining — RESOLVED by Tier I (I1 backend data model + endpoints, I2 Live overlay drag UX + override modal, I3 calendar propagation + availability hint promotion + lifecycle auto-deactivate). See Resolved-by-Tier-I-commit-3 above. -->
 - **§9.1 `specialRequests` column** on reservation schema (if not already present).
 <!-- Socket.IO real-time wiring resolved by Tier C4; i18n plumbing scaffold resolved by Tier C5; C6 Phase 1 data contracts and Phase 2 shared infrastructure (ToastProvider, ActionButton, ReservationDetailPopup, QuickAddReservation) resolved 2026-05-16 — see Resolved section above. Phase 3 wires components into pages. -->
 

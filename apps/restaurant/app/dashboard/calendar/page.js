@@ -253,6 +253,19 @@ export default function CalendarPage() {
                               className="text-amber-200"
                             />
                             <span className="text-[10px] opacity-75 ml-1">×{res.partySize}</span>
+                            {/* Tier I commit 3 — merge badge per decision 4.
+                                Renders in the first member's column showing
+                                only the OTHER member tables ("+T3"). Tooltip
+                                surfaces the full combined label. Block stays
+                                single-column; no grid math change. */}
+                            {res.mergeBinding && res.mergeBinding.otherMemberLabels?.length > 0 && (
+                              <span
+                                className="ml-1 px-1 rounded bg-amber-400 text-amber-900 text-[10px] font-semibold"
+                                title={res.mergeBinding.combinedLabel}
+                              >
+                                +{res.mergeBinding.otherMemberLabels.join('+')}
+                              </span>
+                            )}
                           </div>
                         ) : null}
                       </td>
