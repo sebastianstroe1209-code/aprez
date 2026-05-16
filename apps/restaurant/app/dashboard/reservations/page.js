@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { apiGet, apiPut, apiPost } from '../../../lib/api'
 import { formatDate } from '../../../lib/format'
 import { subscribe } from '../../../lib/socket'
 import { useSocketRefetch } from '../../../lib/useSocketRefetch'
+import { useReservationsTab } from '../../../lib/pendingContext'
 
 const statusBadgeColor = {
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -20,7 +21,18 @@ const statusBadgeColor = {
 export default function ReservationsPage() {
   const router = useRouter()
   const t = useTranslations()
-  const [tab, setTab] = useState('all') // 'all', 'pending', 'today'
+  const searchParams = useSearchParams()
+  const { setActiveTab } = useReservationsTab()
+  // Seed initial tab from ?tab=… so the pending-alert toast's Review
+  // button (and the header badge click) land on the right list.
+  const initialTab = (() => {
+    const fromUrl = searchParams.get('tab')
+    if (fromUrl === 'all' || fromUrl === 'pending' || fromUrl === 'today') return fromUrl
+    return 'all'
+  })()
+  const [tab, setTab] = useState(initialTab)
+  const focusId = searchParams.get('focus')
+  const focusRowRef = useRef(null)
   const [reservations, setReservations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -38,6 +50,21 @@ export default function ReservationsPage() {
   useEffect(() => {
     loadReservations()
   }, [tab])
+
+  // Publish the active tab so PendingReservationListener can suppress
+  // the toast when the user is already on the Pending tab (§3.6).
+  useEffect(() => {
+    setActiveTab(tab)
+    return () => setActiveTab(null)
+  }, [tab, setActiveTab])
+
+  // Scroll the focused row into view after data loads (toast→Review flow).
+  useEffect(() => {
+    if (!focusId || loading) return
+    if (focusRowRef.current) {
+      focusRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [focusId, loading, reservations])
 
   // C4 real-time wiring per §5a. Surgical list updates — no whole-list refetch
   // on each event. Tab/full refetch only on socket reconnect or tab focus
@@ -293,7 +320,11 @@ export default function ReservationsPage() {
               </thead>
               <tbody>
                 {reservations.map((res) => (
-                  <tr key={res.id} className="border-b hover:bg-gray-50">
+                  <tr
+                    key={res.id}
+                    ref={res.id === focusId ? focusRowRef : null}
+                    className={`border-b hover:bg-gray-50 ${res.id === focusId ? 'bg-amber-50' : ''}`}
+                  >
                     <td className="px-6 py-4 text-sm">
                       <div>{res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'N/A')}</div>
                       {res.specialRequests && (

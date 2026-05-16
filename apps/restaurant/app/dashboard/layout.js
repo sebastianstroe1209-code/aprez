@@ -9,6 +9,9 @@ import { getSocket, resetSocket } from '../../lib/socket'
 import ReconnectingBanner from '../../components/ReconnectingBanner'
 import ToastProvider from '../../components/ui/ToastProvider'
 import QuickAddButton from '../../components/ui/QuickAddButton'
+import PendingReservationListener from '../../components/PendingReservationListener'
+import PendingHeaderBadge from '../../components/PendingHeaderBadge'
+import { PendingCountProvider, ReservationsTabProvider } from '../../lib/pendingContext'
 
 const navigationItems = [
   { key: 'dashboard', href: '/dashboard', icon: '📊' },
@@ -92,24 +95,34 @@ export default function DashboardLayout({ children }) {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 ml-64">
-        <ReconnectingBanner />
-        {/* Top Bar */}
-        <header className="bg-white border-b border-gray-200 px-8 py-6 sticky top-0 shadow-sm z-10">
-          <h2 className="text-2xl font-bold text-gray-800">{t('common.platformTitle')}</h2>
-        </header>
-
-        {/* ToastProvider wraps the page tree so QuickAdd's success toast
-            (and future Phase 3 toasts) render across all dashboard pages.
-            QuickAddButton lives inside the provider so useToast resolves. */}
-        <ToastProvider>
-          <main className="p-8">
-            {children}
-          </main>
-          <QuickAddButton />
-        </ToastProvider>
-      </div>
+      {/* Main Content.
+          PendingCountProvider + ReservationsTabProvider wrap BOTH the
+          header (badge reads count) AND the page tree (listener writes
+          count + reservations page writes tab). Lifting them above the
+          header is required: two sibling providers would create two
+          independent contexts and the badge would never update.
+          ToastProvider sits inside the count providers because only the
+          page-tree subtree fires toasts — keeping its scope tight avoids
+          accidentally re-mounting toasts if Phase J ever swaps the
+          provider. */}
+      <PendingCountProvider>
+        <ReservationsTabProvider>
+          <div className="flex-1 ml-64">
+            <ReconnectingBanner />
+            <header className="bg-white border-b border-gray-200 px-8 py-6 sticky top-0 shadow-sm z-10 flex items-center justify-between gap-3">
+              <h2 className="text-2xl font-bold text-gray-800">{t('common.platformTitle')}</h2>
+              <PendingHeaderBadge />
+            </header>
+            <ToastProvider>
+              <PendingReservationListener />
+              <main className="p-8">
+                {children}
+              </main>
+              <QuickAddButton />
+            </ToastProvider>
+          </div>
+        </ReservationsTabProvider>
+      </PendingCountProvider>
     </div>
   )
 }

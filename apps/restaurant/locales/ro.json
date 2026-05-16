@@ -44,7 +44,13 @@
   "settings": {
     "title": "Setări",
     "languageSectionTitle": "Limbă",
-    "languageSectionHint": "Limba interfeței pentru acest browser."
+    "languageSectionHint": "Limba interfeței pentru acest browser.",
+    "audio": {
+      "title": "Alerte audio",
+      "description": "Redă un sunet scurt atunci când sosesc rezervări noi.",
+      "toggleOn": "Activat",
+      "toggleOff": "Dezactivat"
+    }
   },
   "toast": {
     "undoLabel": "Anulează",
@@ -91,6 +97,18 @@
     "closedHoursWarning": "{time} este în afara perioadelor de serviciu. Creezi oricum?",
     "timeoutError": "Conexiune pierdută. Reîncearcă?",
     "addDetails": "+ Adaugă detalii"
+  },
+  "pending": {
+    "toast": {
+      "message": "Cerere nouă: {guestName}, {date} la {time}, {partySize} {partySize, plural, one {persoană} other {persoane}}",
+      "review": "Verifică"
+    },
+    "badge": {
+      "tooltip": "{count} {count, plural, one {rezervare în așteptare} other {rezervări în așteptare}}"
+    },
+    "audio": {
+      "consent": "Apasă oriunde pentru a activa alertele audio"
+    }
   },
   "statusLabel": {
     "PENDING": "În așteptare",

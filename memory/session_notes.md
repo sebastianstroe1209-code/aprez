@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 item 1 (Quick Add everywhere) COMPLETE — floating "+" button mounted in dashboard layout, visible on Dashboard / Live / Reservations / Calendar, hidden on Settings; Alt+N global keyboard shortcut with input-focus guard; success toast via the now-mounted layout-level ToastProvider with name-interpolated copy. QuickAddReservation gained an `onSaveSuccess(saved)` callback so the trigger button can render its own toast while the standalone demo still uses the default. C1/C4/C6-Phase1 regressions pass. P3-2 (Pending reservation alert) is next, gated on Sebastian's approval after he Cowork-QAs the floating button + shortcut.**
+**Last session: 2026-05-16. Tier C6 Phase 3 item 2 (Pending reservation alert) COMPLETE — `PendingReservationListener` mounted in dashboard layout subscribes to `reservation:pending-created` and fires a toast + increments a persistent header badge + plays a WebAudio chime. Suppression: toast skipped when user is already on `/dashboard/reservations` Pending tab (badge still increments). Toast Review button navigates to `?focus=<id>&tab=pending`; the reservations page seeds tab from URL and scrolls the focused row into view. Audio: WebAudio synth (no asset file), per-session toggle in Settings, one-time click-anywhere consent prompt. Side fix: diner POST `/api/reservations` now includes the user join in its `select` so the broadcast payload carries `guestName` for the toast. P3-3 (Live floor overlay) is next.**
 
 ## Where we left off
 
@@ -46,9 +46,27 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 item 1 (Quick Add everywhere) complete; P3-2 (pending alert) is next, gated on Sebastian's approval
+## What's pending — Phase 3 item 2 (Pending alert) complete; P3-3 (Live floor overlay) is next, gated on Sebastian's approval
 
-**C6 P3-1 (Quick Add everywhere) shipped this session.** New shared component `apps/restaurant/components/ui/QuickAddButton.jsx`:
+**C6 P3-2 (Pending reservation alert) shipped this session.** New shared infrastructure:
+- `components/PendingReservationListener.jsx` — mounted at dashboard layout. Subscribes to `reservation:pending-created` via the C4 `subscribe()`. On event: increments badge count, fires toast (variant=info, durationMs=8000, Review action → `/dashboard/reservations?focus=<id>&tab=pending`), plays audio chime if enabled + consented. Suppression: when `pathname === '/dashboard/reservations' && activeTab === 'pending'`, toast is skipped but badge still increments.
+- `components/PendingHeaderBadge.jsx` — amber pill in the persistent top header. Hidden when count === 0. Click navigates to Pending tab. Visible on every dashboard page (including Settings) per §3.6 cross-cutting requirement.
+- `lib/pendingContext.js` — `PendingCountProvider` (count + increment/decrement) and `ReservationsTabProvider` (the reservations page publishes its active tab via this so the listener can suppress).
+- `lib/audio.js` — WebAudio synth (no mp3 asset). 880Hz + 1320Hz sine pair, 20ms attack, exp decay over 280ms. Three localStorage helpers: `isAudioEnabled` (default ON), `setAudioEnabled`, `hasAudioConsent` + `markAudioConsent`. AudioContext lazily created on first consent gesture per browser autoplay policy.
+- Settings page gained an "Audio alerts" card with On/Off toggle.
+
+Wiring:
+- `app/dashboard/layout.js` lifts `PendingCountProvider` + `ReservationsTabProvider` ABOVE both the header and the page tree so the listener (writes count) and badge (reads count) share one context — initial attempt wrapped them in two sibling subtrees and the badge never updated. ToastProvider stays inside the count providers (its scope is page-tree only).
+- `app/dashboard/reservations/page.js` — reads `?tab=` and `?focus=` from `useSearchParams`, seeds initial `tab` from URL, publishes `tab` into `ReservationsTabContext`, attaches a `focusRowRef` to the matching row and `scrollIntoView` after load. Focus row gets `bg-amber-50` highlight.
+
+Side fix bundled:
+- `server/src/routes/reservation.routes.js` diner POST now includes `user: { select: { firstName, lastName, phone } }` in its `select`. Pre-fix the broadcast payload had no guest name, which made the toast render "New request: —". Pure addition — backwards-compatible.
+
+i18n keys added (`pending.toast.{message,review}`, `pending.badge.tooltip`, `pending.audio.consent`, `settings.audio.{title,description,toggleOn,toggleOff}`) in both ro and en with ICU plurals on partySize and count.
+
+Verification: socket simulation confirmed `reservation:pending-created` arrives on `restaurant:{id}` room with the new user-join payload; new component files zero hardcoded English. C4 §5a 7/7 ✓; C1 dispatcher 12/12 ✓. C6 Phase 1 perf bench has drift on `/availability` (p95=237-404ms vs 200ms budget) consistent across three reruns — not caused by P3-2 (which doesn't touch the benched endpoints); the budget was set when Railway round-trip latency was lower. Flag for a future tightening commit; not blocking P3-3.
+
+**C6 P3-1 (Quick Add everywhere) shipped earlier this session.** New shared component `apps/restaurant/components/ui/QuickAddButton.jsx`:
 - Floating "+" pill bottom-right (`fixed bottom-6 right-6 z-40`, label hidden at <640px to keep it FAB-circular on phone).
 - Self-contained: owns modal-open state, mounts `QuickAddReservation`, listens for Alt+N globally with `isTypingTarget` guard (input/textarea/contenteditable skip the shortcut so typing names containing "n" doesn't trigger it), hides on `/dashboard/settings` via `usePathname()`.
 - Success toast `quickAdd.toast.created` ("Reservation saved for {name}", 4s) via the layout-mounted ToastProvider.
@@ -122,12 +140,12 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 P3-2 (Pending reservation alert) is the next code work.** Per waiter_ux_strategy.md §3.6: when a new pending reservation arrives via the mobile app, the restaurant platform fires a global toast (using the now-mounted ToastProvider) visible from any page, plus a persistent badge in the top header that increments and stays until pending reservations are resolved. Audio chime once, with per-session toggle in Settings. Subscribes to `reservation:pending-created` (already broadcasting via C4 + audited in C6 Phase 1 / `events.md`).
+**C6 P3-3 (Live floor overlay) is the next code work.** Per waiter_ux_strategy.md §3.7: migrate the Live page from `GET /api/restaurant/layout` to `GET /api/restaurant/layout/live` so each table card renders guest name + party + time + special-request badge + late-arrival badge using the augmented payload C6 Phase 1 already ships. Keep card height ≥80px for the eventual drag-merge handles. Subscribe to `table:status-changed` for surgical updates (already wired in C4).
 
 Remaining Phase 3 sequence (fastest-first):
-1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped this session.
-2. **Pending reservation alert (3.6)** — next.
-3. Live floor overlay (3.7) — needs frontend migration from /layout to /layout/live.
+1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped earlier this session.
+2. ~~Pending reservation alert (3.6)~~ ✓ shipped this session.
+3. **Live floor overlay (3.7)** — next.
 4. Walk-in fast seating (3.4).
 5. No-show with undo (3.5) — needs PUT /no-show wired + ToastProvider undo path.
 6. Edit existing reservation (3.9) — needs PUT /reservations/:id wired into ReservationDetailPopup edit mode.
@@ -138,9 +156,9 @@ Remaining Phase 3 sequence (fastest-first):
 Each Phase 3 item is its own commit per §8 Phase 4 (per-commit verification including viewport screenshots at 375/768/1440).
 
 **Resume sequence (in order):**
-1. Sebastian Cowork-QAs the floating "+" + Alt+N + Settings-hide at 375/768/1440.
-2. Sebastian gives explicit approval to begin C6 P3-2 (Pending reservation alert).
-3. Phase 3 items 2-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian Cowork-QAs the pending alert toast + header badge + Settings audio toggle + suppression behavior at 375/768/1440.
+2. Sebastian gives explicit approval to begin C6 P3-3 (Live floor overlay).
+3. Phase 3 items 3-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.

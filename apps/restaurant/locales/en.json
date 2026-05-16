@@ -44,7 +44,13 @@
   "settings": {
     "title": "Settings",
     "languageSectionTitle": "Language",
-    "languageSectionHint": "Interface language for this browser."
+    "languageSectionHint": "Interface language for this browser.",
+    "audio": {
+      "title": "Audio alerts",
+      "description": "Play a short sound when new reservations arrive.",
+      "toggleOn": "On",
+      "toggleOff": "Off"
+    }
   },
   "toast": {
     "undoLabel": "Undo",
@@ -91,6 +97,18 @@
     "closedHoursWarning": "{time} is outside service periods. Create anyway?",
     "timeoutError": "Connection lost. Retry?",
     "addDetails": "+ Add details"
+  },
+  "pending": {
+    "toast": {
+      "message": "New request: {guestName}, {date} at {time}, party of {partySize}",
+      "review": "Review"
+    },
+    "badge": {
+      "tooltip": "{count} {count, plural, one {pending reservation} other {pending reservations}}"
+    },
+    "audio": {
+      "consent": "Click anywhere to enable audio alerts"
+    }
   },
   "statusLabel": {
     "PENDING": "Pending",

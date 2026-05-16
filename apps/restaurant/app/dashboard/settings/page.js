@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { apiGet, apiPut, apiPost, apiDelete } from '../../../lib/api'
 import { formatDate } from '../../../lib/format'
 import { useAppLocale } from '../../../lib/i18n/I18nProvider'
+import { isAudioEnabled, setAudioEnabled } from '../../../lib/audio'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -12,6 +13,14 @@ const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export default function SettingsPage() {
   const t = useTranslations()
   const { locale, setLocale } = useAppLocale()
+  // Audio-alert toggle state. Hydrate from localStorage after mount so
+  // SSR doesn't see "window is not defined".
+  const [audioOn, setAudioOnState] = useState(true)
+  useEffect(() => { setAudioOnState(isAudioEnabled()) }, [])
+  const handleAudioToggle = (next) => {
+    setAudioOnState(next)
+    setAudioEnabled(next)
+  }
   const [profile, setProfile] = useState({
     nameEn: '',
     nameRo: '',
@@ -151,6 +160,30 @@ export default function SettingsPage() {
               {code.toUpperCase()}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Audio alerts toggle (C6 P3-2 §3.6) */}
+      <div className="mb-8 bg-white rounded-lg shadow p-6">
+        <h2 className="text-2xl font-bold mb-2">{t('settings.audio.title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings.audio.description')}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleAudioToggle(true)}
+            className={`px-4 py-2 rounded font-medium transition-colors min-h-[44px] ${
+              audioOn ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {t('settings.audio.toggleOn')}
+          </button>
+          <button
+            onClick={() => handleAudioToggle(false)}
+            className={`px-4 py-2 rounded font-medium transition-colors min-h-[44px] ${
+              !audioOn ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {t('settings.audio.toggleOff')}
+          </button>
         </div>
       </div>
 

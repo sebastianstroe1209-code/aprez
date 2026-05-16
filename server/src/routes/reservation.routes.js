@@ -201,7 +201,9 @@ router.post(
       }
       // If no single table fits but section has capacity, it stays PENDING for manual combining
 
-      // Create reservation
+      // Create reservation. Include the user join so the §5a broadcast
+      // payload (used by P3-2 pending-alert toast) carries a usable
+      // guest name without the listener needing a follow-up fetch.
       const reservation = await prisma.reservation.create({
         data: {
           userId,
@@ -216,12 +218,15 @@ router.post(
         },
         select: {
           id: true,
+          userId: true,
+          restaurantId: true,
           status: true,
           date: true,
           time: true,
           endTime: true,
           partySize: true,
           createdAt: true,
+          user: { select: { firstName: true, lastName: true, phone: true } },
         },
       });
 
