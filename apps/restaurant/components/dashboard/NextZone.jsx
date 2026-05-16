@@ -98,9 +98,10 @@ export default function NextZone({ items = [], onPick }) {
                     />
                   </span>
                   <span className="text-xs text-gray-500">
-                    {r.tableLabel || (r.table?.tableNumber ? r.table.tableNumber : '')}
-                    {(r.tableLabel || r.table?.tableNumber) && ' · '}
-                    ×{r.partySize ?? '—'}
+                    {r.tableLabel || r.table?.tableNumber || (
+                      <span className="italic text-gray-400">{t('reservations.unassignedTable')}</span>
+                    )}
+                    {' · '}×{r.partySize ?? '—'}
                     {r.date && ` · ${shortDate(r.date)}`}
                   </span>
                 </span>

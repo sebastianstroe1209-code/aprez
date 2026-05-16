@@ -59,7 +59,7 @@ Each item: WHAT, WHY, WHERE, CONNECTIONS, VERIFICATION.
 | Pending | Confirm (navigates to floor-plan eligibility flow per SPEC §6.5), Reject, Edit, Cancel |
 | Confirmed | Edit, Cancel, Assign table (if tableId is null), Reassign table |
 | AutoConfirmed | Edit, Cancel, Reassign table (Pick table initially if unassigned) |
-| AwaitingGuest | Seat (mark arrived), No-show (with undo per 3.5), Cancel, Edit |
+| AwaitingGuest (derived) | Seat (mark arrived), No-show (with undo per 3.5), Cancel, Edit |
 | Occupied | Complete (mark finished), Cancel (rare — refund-style edge case) |
 | Completed | View only — no actions (historical record) |
 | Cancelled | View only — no actions (historical record) |
@@ -67,6 +67,14 @@ Each item: WHAT, WHY, WHERE, CONNECTIONS, VERIFICATION.
 | ModificationPending | Tier D scope — Approve / Reject (deferred, not in C6) |
 
 If reservation state changes via Socket.IO while popup is open, action buttons re-render to match the new state.
+
+**Clarification on "AwaitingGuest" (added during C6 end-of-phase QA):** the row in the matrix above is a *derived* state, not a literal reservation status — `ReservationStatus` has no AWAITING_GUEST enum (that's only a table status per SPEC §9.1). In practice the reservation row is CONFIRMED / AUTO_CONFIRMED and the *table* flips to AWAITING_GUEST when its reservation time arrives without a seat. The popup's `isAwaitingGuestDerived` helper triggers the "AwaitingGuest" action set when ALL of:
+- `reservation.status ∈ { CONFIRMED, AUTO_CONFIRMED }`
+- `reservation.tableId` is set
+- `reservation.seatedAt` is null
+- EITHER `reservation.table.status === 'AWAITING_GUEST'` (Live + Calendar mount paths supply this) OR `reservation.secondsLate > 0` (Dashboard summary path supplies this).
+
+When the derived state is true, Seat + No-show are added to the regular Edit + Cancel action set for that reservation. Without this fix, the no-show + seat buttons would never appear in practice — caught and fixed during the C6 end-of-phase shift QA.
 
 **WHY.** Currently a waiter clicking a table in Live can't take action on the reservation from there — they navigate to Reservations. A single shared popup means the waiter never has to navigate between pages to act. This is the foundation that other C6 items build on.
 

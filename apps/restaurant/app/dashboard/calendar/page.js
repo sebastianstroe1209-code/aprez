@@ -138,7 +138,11 @@ export default function CalendarPage() {
     if (res) {
       setPopupReservation({
         ...res,
-        table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount },
+        // Include table.status so the popup's actionsForStatus helper
+        // can derive AwaitingGuest (Seat + No-show) when the reservation
+        // is CONFIRMED/AUTO_CONFIRMED but the table has flipped to
+        // AWAITING_GUEST. See ReservationDetailPopup.isAwaitingGuestDerived.
+        table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount, status: table.status },
       })
       setPopupOpen(true)
       return

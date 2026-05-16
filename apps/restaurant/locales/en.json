@@ -23,7 +23,8 @@
     "createButton": "Create Manual Reservation",
     "tabAll": "All",
     "tabPending": "Pending",
-    "tabToday": "Today"
+    "tabToday": "Today",
+    "unassignedTable": "[unassigned]"
   },
   "actions": {
     "confirm": "Confirm",

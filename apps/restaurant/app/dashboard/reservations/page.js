@@ -378,7 +378,7 @@ export default function ReservationsPage() {
                       {res.table?.tableNumber
                         ? res.table.tableNumber
                         : (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED')
-                          ? <span className="text-orange-600 italic">[unassigned]</span>
+                          ? <span className="text-orange-600 italic">{t('reservations.unassignedTable')}</span>
                           : '-'}
                     </td>
                     <td className="px-6 py-4 text-sm">

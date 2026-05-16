@@ -231,7 +231,15 @@ export default function LiveFloorPlanPage() {
       if (next) {
         setPopupReservation({
           ...next,
-          table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount },
+          // table.status threads into the popup so its actionsForStatus
+      // helper can derive the AwaitingGuest action set (Seat + No-show)
+      // even though the reservation's own status is CONFIRMED /
+      // AUTO_CONFIRMED — see ReservationDetailPopup's isAwaitingGuestDerived.
+      table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount, status: table.status },
+      // secondsLate is the Dashboard-summary equivalent of the same
+      // signal; pass it through too so the derivation works regardless
+      // of which path supplied the data.
+      secondsLate: overlay?.secondsLate ?? reservation.secondsLate ?? null,
         })
         setPopupOpen(true)
       }
@@ -244,7 +252,15 @@ export default function LiveFloorPlanPage() {
     if (!reservation) return
     setPopupReservation({
       ...reservation,
-      table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount },
+      // table.status threads into the popup so its actionsForStatus
+      // helper can derive the AwaitingGuest action set (Seat + No-show)
+      // even though the reservation's own status is CONFIRMED /
+      // AUTO_CONFIRMED — see ReservationDetailPopup's isAwaitingGuestDerived.
+      table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount, status: table.status },
+      // secondsLate is the Dashboard-summary equivalent of the same
+      // signal; pass it through too so the derivation works regardless
+      // of which path supplied the data.
+      secondsLate: overlay?.secondsLate ?? reservation.secondsLate ?? null,
     })
     setPopupOpen(true)
   }

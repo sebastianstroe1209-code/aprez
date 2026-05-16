@@ -23,7 +23,8 @@
     "createButton": "Creează rezervare manuală",
     "tabAll": "Toate",
     "tabPending": "În așteptare",
-    "tabToday": "Astăzi"
+    "tabToday": "Astăzi",
+    "unassignedTable": "[fără masă]"
   },
   "actions": {
     "confirm": "Confirmă",

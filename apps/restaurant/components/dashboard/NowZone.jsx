@@ -44,7 +44,10 @@ export default function NowZone({ items = [], onPick }) {
                     />
                   </span>
                   <span className="text-xs text-gray-500">
-                    {r.tableLabel ? `${r.tableLabel} · ` : ''}×{r.partySize ?? '—'}
+                    {r.tableLabel || (
+                      <span className="italic text-gray-400">{t('reservations.unassignedTable')}</span>
+                    )}
+                    {' · '}×{r.partySize ?? '—'}
                   </span>
                 </span>
                 <MinLateBadge secondsLate={r.secondsLate} />

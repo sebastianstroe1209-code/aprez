@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 COMPLETE — final commit ships P3-8 (Calendar enhancements: now-indicator + click-empty-slot opens Quick Add prefilled + OOS-cell toast + click-occupied opens popup) and P3-9 (consistency pass: shared `<SpecialRequestsBadge>` + `<MinLateBadge>` mounted everywhere — Reservations rows, Calendar cells, Dashboard NOW+NEXT, Live overlay, popup header). QuickAddReservation now accepts `prefill.tableId` for the calendar flow with a passive clearable badge. CalendarNowIndicator uses ref-based DOM mutation so the parent calendar's React tree stays stable across minute ticks. SPEC §15 §6.4 / §3.10 / §3.12 / §3.13 entries marked resolved. All 9 Phase 3 items shipped. Next: end-of-C6 shift simulation by Cowork (Phase 5 per §8) before declaring C6 done and unblocking Tier D+E+F+I parallel block.**
+**Last session: 2026-05-16. Tier C6 Phase 3 COMPLETE + two end-of-phase QA fixes shipped (derived-AwaitingGuest action set + [unassigned] label) — all 9 Phase 3 items implemented; Cowork shift simulation caught two issues, both fixed in a single follow-up commit. C6 is ready for sign-off and cleanup of the seeded fixture. Next: Cowork re-verifies the no-show button now appears for Smith Family + [unassigned] label visible on Daniel Vlad → approves C6 close → cleanup of fixture rows → Tier D+E+F+I parallel block unblocks.**
 
 ## Where we left off
 
@@ -46,7 +46,25 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 COMPLETE (all 9 items shipped); end-of-C6 shift simulation is next
+## What's pending — Phase 3 COMPLETE + post-QA fixes shipped; C6 sign-off + fixture cleanup is next
+
+**C6 end-of-phase QA fixes shipped this session.** Two findings from Cowork's shift simulation, both fixed in one targeted commit:
+
+1. **Derived AwaitingGuest action set** — the popup's `actionsForStatus` previously only rendered Seat + No-show when `reservation.status === 'AWAITING_GUEST'`, which never happens in practice (ReservationStatus enum has no AWAITING_GUEST — that's only a table status per SPEC §9.1). New `isAwaitingGuestDerived` helper triggers the set when: `status ∈ {CONFIRMED, AUTO_CONFIRMED}` AND `tableId` set AND `!seatedAt` AND (`table.status === 'AWAITING_GUEST'` OR `secondsLate > 0`). Live + Calendar pages now pass `table.status` into the popup; Dashboard already passes `secondsLate` from summary. The `'AWAITING_GUEST'` case in the switch is kept as defensive code with a comment.
+2. **[unassigned] label** — `reservations.unassignedTable` i18n key added (`[unassigned]` / `[fără masă]`). Rendered in Dashboard NOW + NEXT zone rows when `tableLabel` is missing; Reservations page row already had an English hardcoded version, converted to use the same key for consistency.
+
+memory/waiter_ux_strategy.md §3.1 state-action matrix gained a clarification note that "AwaitingGuest" is a *derived* state, not a literal reservation status; documents the four conditions of `isAwaitingGuestDerived` so future tier work doesn't re-litigate the bug.
+
+Smoke results: derived state simulated on all three fixture scenarios:
+- Smith Family (CONFIRMED + table.AWAITING_GUEST + 20min late) → `[seat, noshow, edit, cancel]` ✓
+- Daniel Vlad (AUTO_CONFIRMED + tableId=null) → `[edit, pickTable, cancel]` ✓ (no Seat/No-show since no table)
+- Florin Tudor-style future (CONFIRMED + table.FREE + no late) → `[edit, reassignTable, cancel]` ✓ (no Seat/No-show)
+
+C4 §5a 7/7 ✓. C1 dispatcher 12/12 ✓. New + changed files: zero hardcoded English UI strings.
+
+**Fixture still seeded** — `server/.smoke/c6-shift-fixture-ids.json` holds the manifest for cleanup. After Cowork confirms the fix in browser, run `cd server && node .smoke/c6-shift-fixture.js --cleanup` to delete 21 reservations + 1 table-activity and restore 11 table-status mutations.
+
+
 
 **C6 P3-8+P3-9 (Calendar enhancements + polish consistency pass) shipped this session as one combined commit.**
 
