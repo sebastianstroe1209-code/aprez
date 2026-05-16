@@ -761,7 +761,11 @@ router.put(
   }
 );
 
-// PUT /reservations/:id/no-show - Mark as no-show
+// PUT /reservations/:id/no-show - Mark as no-show. C6 P3-5: captures the
+// table's prior status (typically AWAITING_GUEST) in
+// `noShowPriorTableStatus` so the restore-no-show endpoint can put the
+// table back without guessing if the waiter taps Undo within the 10s
+// toast grace.
 router.put(
   '/reservations/:id/no-show',
   authenticateRestaurant,
@@ -784,10 +788,26 @@ router.put(
         return res.status(404).json({ error: 'Reservation not found' });
       }
 
+      let priorTableStatus = null;
+      let tableLabel = null;
+      if (reservation.tableId) {
+        const prevTable = await prisma.restaurantTable.findUnique({
+          where: { id: reservation.tableId },
+          select: { status: true, tableNumber: true },
+        });
+        priorTableStatus = prevTable?.status || null;
+        tableLabel = prevTable?.tableNumber || null;
+      }
+
       const updated = await prisma.reservation.update({
         where: { id },
         data: {
           status: 'NO_SHOW',
+          // Capture both for the undo path. ReservationStatus and table
+          // status are unrelated enums (e.g. reservation=CONFIRMED while
+          // table=AWAITING_GUEST), so each gets its own column.
+          noShowPriorStatus: reservation.status,
+          noShowPriorTableStatus: priorTableStatus,
         },
       });
 
@@ -810,7 +830,96 @@ router.put(
       io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
       if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
 
-      res.json(updated);
+      // Include tableLabel in the response so the client can render it in
+      // the undo toast without an extra round-trip if the popup didn't
+      // already have it.
+      res.json({ ...updated, tableLabel });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PUT /reservations/:id/restore-no-show — C6 P3-5 undo path for the
+// §3.5 toast. Reverts a recently-marked NoShow back to AwaitingGuest
+// AND restores the table to its captured `noShowPriorTableStatus`.
+// Race-safe: if the table has been claimed by another flow (e.g., a
+// walk-in seated in the 10s undo grace window), responds 409 with
+// { error: 'table-no-longer-free', tableLabel } so the caller can
+// surface the specific copy.
+router.put(
+  '/reservations/:id/restore-no-show',
+  authenticateRestaurant,
+  [param('id').isUUID()],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const restaurantId = req.user.restaurantId;
+      const { id } = req.params;
+
+      const reservation = await prisma.reservation.findFirst({
+        where: { id, restaurantId },
+      });
+      if (!reservation) {
+        return res.status(404).json({ error: 'Reservation not found' });
+      }
+      if (reservation.status !== 'NO_SHOW') {
+        return res.status(409).json({ error: 'reservation-not-no-show' });
+      }
+
+      // Race check: the table must still be FREE for the restore to be
+      // safe. If a walk-in took it during the grace window, bail with
+      // a labeled 409.
+      let tableLabel = null;
+      if (reservation.tableId) {
+        const currentTable = await prisma.restaurantTable.findUnique({
+          where: { id: reservation.tableId },
+          select: { status: true, tableNumber: true },
+        });
+        if (currentTable) {
+          tableLabel = currentTable.tableNumber;
+          if (currentTable.status !== 'FREE') {
+            return res.status(409).json({
+              error: 'table-no-longer-free',
+              tableLabel,
+            });
+          }
+        }
+      }
+
+      // Default reservation status: CONFIRMED (safe fallback if the
+      // capture column is null for a legacy/pre-P3-5 no-show row).
+      const priorReservationStatus = reservation.noShowPriorStatus || 'CONFIRMED';
+      // Default table status: AWAITING_GUEST (the typical pre-no-show
+      // state per §8.1).
+      const priorTableStatus = reservation.noShowPriorTableStatus || 'AWAITING_GUEST';
+      const updated = await prisma.reservation.update({
+        where: { id },
+        data: {
+          status: priorReservationStatus,
+          noShowPriorStatus: null,
+          noShowPriorTableStatus: null,
+        },
+      });
+
+      const io = req.app.get('io');
+      if (updated.tableId) {
+        const tableNow = new Date();
+        await prisma.restaurantTable.update({
+          where: { id: updated.tableId },
+          data: { status: priorTableStatus, statusChangedAt: tableNow },
+        });
+        io.emitToRestaurant(restaurantId, 'table:status-changed', {
+          tableId: updated.tableId,
+          newStatus: priorTableStatus,
+          statusChangedAt: tableNow,
+        });
+      }
+      io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
+
+      res.json({ ...updated, tableLabel });
     } catch (error) {
       next(error);
     }
@@ -1506,7 +1615,9 @@ router.get('/dashboard/summary', authenticateRestaurant, async (req, res, next) 
         partySize: r.partySize,
         time: r.time,
         status: r.status,
-        tableLabel: r.table ? `T${r.table.tableNumber}` : null,
+        // tableNumber already carries the "T" prefix (e.g. "T5") per
+        // commit 5eabdc0; don't double-prepend in the summary payload.
+        tableLabel: r.table ? r.table.tableNumber : null,
         hasSpecialRequests: !!(r.specialRequests && r.specialRequests.trim()),
         secondsLate,
       };

@@ -98,6 +98,14 @@
     "timeoutError": "Conexiune pierdută. Reîncearcă?",
     "addDetails": "+ Adaugă detalii"
   },
+  "noShow": {
+    "toast": {
+      "marked": "Marcat ca neprezentare — {name}",
+      "undo": "Anulează",
+      "undone": "Restaurat — {name}",
+      "undoFailed": "Nu se poate anula — masa {tableLabel} este acum ocupată"
+    }
+  },
   "walkIn": {
     "title": "Așezi un client?",
     "subtitle": "Masa {tableLabel} · {seats} {seats, plural, one {loc} other {locuri}}",

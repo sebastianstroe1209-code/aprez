@@ -269,6 +269,14 @@ model Reservation {
   reminderSentAt   DateTime?          @map("reminder_sent_at")
   cancelledAt      DateTime?          @map("cancelled_at")
   cancelledBy      String?            @map("cancelled_by") // 'user', 'restaurant', 'system'
+  // Captured by PUT /no-show so the restore-no-show endpoint (§3.5 undo)
+  // can put both the reservation and the table back into their pre-no-show
+  // state without guessing. Two columns because ReservationStatus and
+  // RestaurantTable.status are unrelated enums (the reservation is
+  // typically CONFIRMED/AUTO_CONFIRMED before no-show; the table is
+  // typically AWAITING_GUEST). Both cleared on successful undo.
+  noShowPriorStatus      String?      @map("no_show_prior_status")
+  noShowPriorTableStatus String?      @map("no_show_prior_table_status")
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
 

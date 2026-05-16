@@ -98,6 +98,14 @@
     "timeoutError": "Connection lost. Retry?",
     "addDetails": "+ Add details"
   },
+  "noShow": {
+    "toast": {
+      "marked": "Marked no-show — {name}",
+      "undo": "Undo",
+      "undone": "Restored — {name}",
+      "undoFailed": "Cannot undo — table {tableLabel} is now occupied"
+    }
+  },
   "walkIn": {
     "title": "Seat walk-in?",
     "subtitle": "Table {tableLabel} · {seats} {seats, plural, one {seat} other {seats}}",

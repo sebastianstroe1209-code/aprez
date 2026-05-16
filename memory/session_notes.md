@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 item 4 (Walk-in fast seating) COMPLETE — new `WalkInActionSheet` component (party stepper, optional collapsible name field, capacity-override warning, pending-sync save) wired on the Live page: Free clicks open it directly; Arriving-Soon clicks within 30 min of the upcoming reservation open it with a pre-form acknowledgement warning per §3.4 edge cases; Arriving-Soon ≥30 min opens the existing ReservationDetailPopup on the upcoming reservation. Backend `PUT /api/restaurant/tables/:id/seat` extended to accept optional `walkInName` body field (stored in `TableActivity.notes`); `walkin:created` event payload now carries `walkInName`. End-to-end smoke confirmed: PUT response, event payload, and DB row all carry the name. P3-5 (No-show with undo) is next.**
+**Last session: 2026-05-16. Tier C6 Phase 3 item 5 (No-show with undo) COMPLETE — ReservationDetailPopup's existing No-show button now wired internally: PUT `/api/restaurant/reservations/:id/no-show` on click, closes popup, fires undo toast (10s grace) whose action invokes the new PUT `/restore-no-show` endpoint. Race-safe: backend captures `noShowPriorStatus` + `noShowPriorTableStatus` columns on no-show and verifies table is still FREE before restoring; if a walk-in claimed it during the grace, responds 409 `{ error: 'table-no-longer-free', tableLabel }` and the toast renders the labeled error. Schema gained both prior-status columns (additive, two `db:push` runs no `--accept-data-loss`). Also fixed the TT-prefix bug across 4 sites (WalkInActionSheet × 2, ReservationDetailPopup `tableLabelOf`, dashboard/summary `tableLabel` payload). P3-6 (Edit existing reservation) is next.**
 
 ## Where we left off
 
@@ -46,9 +46,46 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 item 4 (Walk-in fast seating) complete; P3-5 (No-show + undo) is next, gated on Sebastian's approval
+## What's pending — Phase 3 item 5 (No-show + undo) complete; P3-6 (Edit existing reservation) is next, gated on Sebastian's approval
 
-**C6 P3-4 (Walk-in fast seating) shipped this session.** New component + Live wiring + small backend extension.
+**C6 P3-5 (No-show with undo) shipped this session.** Schema additions + backend endpoint + popup wiring + bundled label-prefix fix.
+
+Schema (additive, two `db:push` runs, no `--accept-data-loss`):
+- `Reservation.noShowPriorStatus String?` — captures the reservation's prior status (typically AUTO_CONFIRMED/CONFIRMED) before the no-show transition.
+- `Reservation.noShowPriorTableStatus String?` — captures the table's prior status (typically AWAITING_GUEST). Two columns because `ReservationStatus` and `RestaurantTable.status` are unrelated enums — caught mid-implementation when the restore endpoint tried to set reservation.status = 'AWAITING_GUEST' and Prisma rejected.
+
+Backend (`server/src/routes/restaurantPlatform.routes.js`):
+- `PUT /api/restaurant/reservations/:id/no-show` now reads the current table status BEFORE the transition and writes both prior columns; response includes `tableLabel` so the client can render it in the undo toast without a follow-up fetch.
+- NEW `PUT /api/restaurant/reservations/:id/restore-no-show`:
+  - Verifies reservation is currently NoShow.
+  - Verifies the assigned table is still FREE; if not, 409 with `{ error: 'table-no-longer-free', tableLabel }`.
+  - Restores reservation status from `noShowPriorStatus` (fallback CONFIRMED) and table status from `noShowPriorTableStatus` (fallback AWAITING_GUEST); clears both columns.
+  - Emits `reservation:updated` + `table:status-changed`.
+
+Frontend (`apps/restaurant/components/ReservationDetailPopup.jsx`):
+- Added internal `handleNoShow` + `handleUndoNoShow` handlers. `handleAction('noshow')` is intercepted in the popup; other actions still forward via `onAction` to the parent.
+- Loading state: `processingAction` flags drive ActionButton `loading={true}` for the clicked button and `disabled={true}` for siblings.
+- Inline `actionError` slot added between detail grid and actions for popup-handled-action failures.
+- On 200: popup closes, undo toast (variant=undo, durationMs=10000) shows with copy `noShow.toast.marked` + actionLabel `noShow.toast.undo`.
+- On undo 200: success toast `noShow.toast.undone`.
+- On undo 409 (race): error toast `noShow.toast.undoFailed` interpolated with tableLabel from the 409 body.
+
+TT-prefix bug fix (bundled per P3-4 QA feedback):
+- `tableNumber` already carries "T" prefix per commit `5eabdc0` (seed has values like "T9", "T13").
+- Four sites stripped redundant `\`T${tableNumber}\`` template:
+  - `apps/restaurant/components/WalkInActionSheet.jsx` — `tableLabel` local var + `walkIn.toast.seated` interpolation.
+  - `apps/restaurant/components/ReservationDetailPopup.jsx` — `tableLabelOf()` helper.
+  - `server/src/routes/restaurantPlatform.routes.js` — dashboard/summary `tableLabel` payload.
+- Grep confirmed zero remaining `\`T${...tableNumber}\`` patterns in apps/ or server/src/.
+
+i18n keys added (`noShow.toast.{marked,undo,undone,undoFailed}`) in both ro and en.
+
+End-to-end smoke (all three §3.5 paths verified):
+- A. Happy path: no-show → status NO_SHOW with `noShowPriorStatus: AUTO_CONFIRMED`, `noShowPriorTableStatus: AWAITING_GUEST`, `tableLabel: T13`, table freed. Undo → reservation back to AUTO_CONFIRMED, both prior columns cleared, table back to AWAITING_GUEST.
+- B. Race: no-show → walk-in seats the freed table → undo returns 409 `table-no-longer-free` with `tableLabel: T13`.
+- All four dev servers serve 200 after wiring; new popup code zero hardcoded English; C4 §5a 7/7 ✓; C1 dispatcher 12/12 ✓.
+
+**C6 P3-4 (Walk-in fast seating) shipped earlier this session.** New component + Live wiring + small backend extension.
 
 New component `apps/restaurant/components/WalkInActionSheet.jsx`:
 - Props: `table`, `isOpen`, `onClose`, `onSeated(updated)`, optional `arrivingSoonWarning: { name, party, minutes }`.
@@ -186,15 +223,15 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 P3-5 (No-show with undo) is the next code work.** Per waiter_ux_strategy.md §3.5: from the ReservationDetailPopup or the Live table popup for Awaiting-Guest reservations, "Mark no-show" sets status NoShow + frees the table, then shows a "Marked no-show — {name}. Undo" toast (variant=undo) with a 10-second grace. Undo verifies table state before reverting (race-with-walk-in edge case per §3.5: if a walk-in took the table in the grace window, undo shows an error toast and reservation stays NoShow). Backend `PUT /api/restaurant/reservations/:id/no-show` already exists from Phase 1; needs an `/undo` companion OR the existing route reused with status=AWAITING_GUEST.
+**C6 P3-6 (Edit existing reservation) is the next code work.** Per waiter_ux_strategy.md §3.9: from the ReservationDetailPopup, an Edit button opens an inline edit mode (or reuses the Quick Add form pre-populated with current values). Editable fields: Date, Time, Party Size, Phone, Special Requests, assigned Table. Save uses pending-sync per §4.2. Backend `PUT /api/restaurant/reservations/:id` already exists from C6 Phase 1; needs frontend wiring. Pattern: same popup-internal handling as P3-5 (intercept action='edit', show edit form, save, close + success toast).
 
 Remaining Phase 3 sequence (fastest-first):
 1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped earlier this session.
 2. ~~Pending reservation alert (3.6)~~ ✓ shipped earlier this session.
 3. ~~Live floor overlay (3.7)~~ ✓ shipped earlier this session.
-4. ~~Walk-in fast seating (3.4)~~ ✓ shipped this session.
-5. **No-show with undo (3.5)** — next.
-6. Edit existing reservation (3.9) — needs PUT /reservations/:id wired into ReservationDetailPopup edit mode.
+4. ~~Walk-in fast seating (3.4)~~ ✓ shipped earlier this session.
+5. ~~No-show with undo (3.5)~~ ✓ shipped this session.
+6. **Edit existing reservation (3.9)** — next.
 7. Dashboard rebuild (3.8) — largest, last.
 8. Calendar improvements (3.10).
 9. Special request badges + action subtext + late-arrival display (3.11 / 3.12 / 3.13).
@@ -202,9 +239,9 @@ Remaining Phase 3 sequence (fastest-first):
 Each Phase 3 item is its own commit per §8 Phase 4 (per-commit verification including viewport screenshots at 375/768/1440).
 
 **Resume sequence (in order):**
-1. Sebastian Cowork-QAs the walk-in action sheet at 375/768/1440: Free-table click (basic flow), party-size override warning, Arriving-Soon-within-30min warning gate, Esc/backdrop close, success toast.
-2. Sebastian gives explicit approval to begin C6 P3-5 (No-show + undo).
-3. Phase 3 items 5-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian Cowork-QAs the no-show + undo flow at 375/768/1440: mark no-show from popup, undo from toast within 10s, race scenario (mark no-show → seat walk-in → tap undo → labeled-error toast).
+2. Sebastian gives explicit approval to begin C6 P3-6 (Edit existing reservation).
+3. Phase 3 items 6-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.

@@ -84,7 +84,9 @@ export default function WalkInActionSheet({
       const updated = await apiPut(`/api/restaurant/tables/${table.id}/seat`, body)
       showToast(
         t('walkIn.toast.seated', {
-          tableLabel: `T${table.tableNumber}`,
+          // tableNumber already carries the "T" prefix per the canonical
+          // fix in commit 5eabdc0; don't double-prepend.
+          tableLabel: table.tableNumber,
           party: partySize,
         }),
         { variant: 'success', durationMs: 4000 }
@@ -107,7 +109,9 @@ export default function WalkInActionSheet({
 
   if (!isOpen || !table) return null
 
-  const tableLabel = `T${table.tableNumber}`
+  // tableNumber already carries the "T" prefix (e.g. "T5"). Pre-fix this
+  // was `T${table.tableNumber}` which rendered as "TT5".
+  const tableLabel = table.tableNumber
 
   return (
     <div
