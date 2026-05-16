@@ -171,6 +171,33 @@ router.get(
   }
 );
 
+// GET /:id/disabled-dates — diner-facing list of dates the restaurant
+// has marked unavailable. Used by the mobile date picker to gray out
+// dates client-side, in addition to the server-side enforcement already
+// in /time-slots and POST /reservations. Returns `[{ date, reason? }, …]`.
+// Tier F commit 2.
+router.get(
+  '/:id/disabled-dates',
+  authenticateUser,
+  [param('id').notEmpty().trim()],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      // Skip past dates — they can't be booked anyway, and shipping
+      // them clutters the picker payload for restaurants with a long
+      // history of closures.
+      const todayMidnight = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+      const rows = await prisma.disabledDate.findMany({
+        where: { restaurantId: req.params.id, date: { gte: todayMidnight } },
+        select: { date: true, reason: true },
+        orderBy: { date: 'asc' },
+      });
+      res.json(rows);
+    } catch (e) { next(e); }
+  }
+);
+
 // GET /:id/availability - Check table availability
 router.get(
   '/:id/availability',

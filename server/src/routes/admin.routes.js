@@ -403,6 +403,120 @@ router.put(
 );
 
 // ============================================
+// RESERVATION-DISABLED DAYS (Tier F commit 2, SPEC §7.1)
+// Per-restaurant calendar of specific dates that block new reservations.
+// Backed by the existing `DisabledDate` model — the spec called the new
+// table `ReservationDisabledDate` but the same shape already shipped in
+// Tier B with the shorter name; we reuse it rather than duplicate.
+// Diner-side enforcement was already wired in reservation.routes.js +
+// restaurant.routes.js time-slots — these admin endpoints fill in CRUD.
+// ============================================
+
+// GET /restaurants/:id/disabled-dates - List, sorted asc.
+router.get(
+  '/restaurants/:id/disabled-dates',
+  authenticateAdmin,
+  [param('id').notEmpty().trim()],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const rows = await prisma.disabledDate.findMany({
+        where: { restaurantId: req.params.id },
+        orderBy: { date: 'asc' },
+      });
+      res.json(rows);
+    } catch (e) { next(e); }
+  }
+);
+
+// POST /restaurants/:id/disabled-dates  body { date: 'YYYY-MM-DD', reason? }
+router.post(
+  '/restaurants/:id/disabled-dates',
+  authenticateAdmin,
+  [
+    param('id').notEmpty().trim(),
+    body('date').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('date must be YYYY-MM-DD'),
+    body('reason').optional({ checkFalsy: true }).isString().isLength({ max: 200 }),
+  ],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const adminUserId = req.user.id;
+      const restaurantId = req.params.id;
+      const { date, reason } = req.body;
+
+      // Reject past dates. Compare ISO-date strings in UTC so we avoid
+      // a borderline TZ slip — disabling "today" should always be valid
+      // regardless of local hour.
+      const todayIso = new Date().toISOString().slice(0, 10);
+      if (date < todayIso) {
+        return res.status(400).json({ error: { code: 'date-in-past', message: 'Date must be today or in the future.' } });
+      }
+
+      const dateObj = new Date(`${date}T00:00:00.000Z`);
+
+      // Restaurant must exist.
+      const restaurant = await prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { id: true },
+      });
+      if (!restaurant) {
+        return res.status(404).json({ error: { code: 'restaurant-not-found', message: 'Restaurant not found.' } });
+      }
+
+      // Conflict on existing (relies on the @@unique([restaurantId, date])
+      // constraint that's been on DisabledDate since Tier B; pre-check
+      // gives a friendlier error than a Prisma P2002.
+      const existing = await prisma.disabledDate.findFirst({
+        where: { restaurantId, date: dateObj },
+      });
+      if (existing) {
+        return res.status(400).json({ error: { code: 'already-exists', message: 'This date is already disabled.' } });
+      }
+
+      const created = await prisma.disabledDate.create({
+        data: {
+          restaurantId,
+          date: dateObj,
+          reason: reason || null,
+        },
+      });
+
+      await logAdminAction(prisma, adminUserId, 'added_disabled_date', 'restaurant', restaurantId, { date, reason: reason || null });
+
+      res.status(201).json(created);
+    } catch (e) { next(e); }
+  }
+);
+
+// DELETE /restaurants/:id/disabled-dates/:dateId
+router.delete(
+  '/restaurants/:id/disabled-dates/:dateId',
+  authenticateAdmin,
+  [param('id').notEmpty().trim(), param('dateId').isUUID()],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const adminUserId = req.user.id;
+      const { id: restaurantId, dateId } = req.params;
+
+      const row = await prisma.disabledDate.findUnique({ where: { id: dateId } });
+      if (!row || row.restaurantId !== restaurantId) {
+        return res.status(404).json({ error: { code: 'disabled-date-not-found', message: 'Disabled date not found.' } });
+      }
+
+      await prisma.disabledDate.delete({ where: { id: dateId } });
+      await logAdminAction(prisma, adminUserId, 'removed_disabled_date', 'restaurant', restaurantId, { date: row.date });
+
+      res.json({ message: 'Disabled date removed.' });
+    } catch (e) { next(e); }
+  }
+);
+
+// ============================================
 // TABLE LAYOUT
 // ============================================
 
@@ -454,6 +568,10 @@ router.post(
 );
 
 // PUT /sections/:id - Edit section
+// Tier F commit 2: when gridRows/gridColumns shrink, refuse with 409
+// `shrink-orphans-tables` if any table would end up outside the new
+// dimensions. Without this guard the table rows survive but the grid
+// editor renders them off-canvas — a silent data-integrity hazard.
 router.put(
   '/sections/:id',
   authenticateAdmin,
@@ -478,6 +596,40 @@ router.put(
       if (gridRows !== undefined) updateData.gridRows = parseInt(gridRows);
       if (gridColumns !== undefined) updateData.gridColumns = parseInt(gridColumns);
 
+      // Pre-validate shrink against current tables before mutating.
+      if (updateData.gridRows !== undefined || updateData.gridColumns !== undefined) {
+        const current = await prisma.tableSection.findUnique({
+          where: { id },
+          include: { tables: { select: { id: true, tableNumber: true, gridRow: true, gridCol: true } } },
+        });
+        if (!current) {
+          return res.status(404).json({ error: { code: 'section-not-found', message: 'Section not found.' } });
+        }
+        const newRows = updateData.gridRows ?? current.gridRows;
+        const newCols = updateData.gridColumns ?? current.gridColumns;
+        const orphans = (current.tables || []).filter(
+          (t) => t.gridRow >= newRows || t.gridCol >= newCols
+        );
+        if (orphans.length > 0) {
+          return res.status(409).json({
+            error: {
+              code: 'shrink-orphans-tables',
+              message: `Cannot shrink: ${orphans.length} table(s) would fall outside the new grid.`,
+              orphanCount: orphans.length,
+              // Cap to keep the payload small; UI just needs a few names.
+              sampleTables: orphans.slice(0, 5).map((t) => ({
+                id: t.id,
+                tableNumber: t.tableNumber,
+                gridRow: t.gridRow,
+                gridCol: t.gridCol,
+              })),
+              newRows,
+              newCols,
+            },
+          });
+        }
+      }
+
       const updated = await prisma.tableSection.update({
         where: { id },
         data: updateData,
@@ -493,6 +645,12 @@ router.put(
 );
 
 // DELETE /sections/:id - Delete section and tables
+// Tier F commit 2 guards: 409 if any FUTURE reservation is attached to a
+// table in this section. If only PAST reservations exist, null-out their
+// tableId in the same transaction (preserves diner history) then cascade-
+// delete the section + tables. Without this, the cascade either bombs
+// on the FK from Reservation → RestaurantTable, or silently nukes the
+// restaurant's billing-relevant past bookings.
 router.delete(
   '/sections/:id',
   authenticateAdmin,
@@ -504,17 +662,71 @@ router.delete(
       const adminUserId = req.user.id;
       const { id } = req.params;
 
-      const section = await prisma.tableSection.findUnique({ where: { id } });
+      const section = await prisma.tableSection.findUnique({
+        where: { id },
+        include: { tables: { select: { id: true } } },
+      });
       if (!section) {
-        return res.status(404).json({ error: 'Section not found' });
+        return res.status(404).json({ error: { code: 'section-not-found', message: 'Section not found.' } });
       }
 
-      // Delete section (cascades to tables)
+      const tableIds = (section.tables || []).map((t) => t.id);
+      if (tableIds.length > 0) {
+        // Compare dates at midnight UTC; matches how reservation dates
+        // are stored (Date column, no time component on the date field).
+        const todayMidnight = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+
+        const futureCount = await prisma.reservation.count({
+          where: {
+            tableId: { in: tableIds },
+            date: { gte: todayMidnight },
+            // Don't count already-cancelled bookings — they don't
+            // "occupy" the table for the purposes of this guard.
+            status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+          },
+        });
+        if (futureCount > 0) {
+          const next = await prisma.reservation.findFirst({
+            where: {
+              tableId: { in: tableIds },
+              date: { gte: todayMidnight },
+              status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+            },
+            orderBy: [{ date: 'asc' }, { time: 'asc' }],
+            select: { date: true, time: true },
+          });
+          return res.status(409).json({
+            error: {
+              code: 'section-has-reservations',
+              message: `This section has ${futureCount} future reservation(s) attached. Cancel or reassign them before deleting the section.`,
+              count: futureCount,
+              nextDate: next?.date,
+              nextTime: next?.time,
+            },
+          });
+        }
+
+        // Past-only attached: null-out their tableId in a transaction so
+        // the cascade doesn't FK-fail and the audit row stays intact.
+        const pastCount = await prisma.reservation.count({
+          where: { tableId: { in: tableIds } },
+        });
+        if (pastCount > 0) {
+          await prisma.reservation.updateMany({
+            where: { tableId: { in: tableIds } },
+            data: { tableId: null },
+          });
+        }
+      }
+
+      // Cascade-delete (TableSection has onDelete: Cascade on tables).
       await prisma.tableSection.delete({ where: { id } });
 
-      await logAdminAction(prisma, adminUserId, 'deleted_section', 'table_section', id, {});
+      await logAdminAction(prisma, adminUserId, 'deleted_section', 'table_section', id, {
+        tablesRemoved: tableIds.length,
+      });
 
-      res.status(204).send();
+      res.json({ message: 'Section deleted.', tablesRemoved: tableIds.length });
     } catch (error) {
       next(error);
     }

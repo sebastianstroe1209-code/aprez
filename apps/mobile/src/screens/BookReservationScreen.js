@@ -73,6 +73,27 @@ export default function BookReservationScreen({ route, navigation }) {
   const [phonePromptSaving, setPhonePromptSaving] = useState(false);
   const [phonePromptDismissed, setPhonePromptDismissed] = useState(false);
 
+  // Tier F2 — disabled-date list for graying out the date picker.
+  // Server-side enforcement is already in place (time-slots returns
+  // { disabled: true } and POST /reservations 400s), so the client-side
+  // gray-out is pure UX polish.
+  const [disabledDates, setDisabledDates] = useState({}); // { 'YYYY-MM-DD': 'reason' | null }
+  useEffect(() => {
+    let alive = true;
+    api.get(`/restaurants/${r.id}/disabled-dates`)
+      .then((res) => {
+        if (!alive) return;
+        const map = {};
+        for (const row of res.data || []) {
+          const iso = (row.date || '').slice(0, 10);
+          if (iso) map[iso] = row.reason || null;
+        }
+        setDisabledDates(map);
+      })
+      .catch(() => { /* non-blocking — server still enforces */ });
+    return () => { alive = false; };
+  }, [r.id]);
+
   // Phone prompt shows when: booking succeeded, user has no phone on
   // file, the server-side phonePromptSeenAt is null (so this is the
   // first qualifying reservation), and they haven't tapped Skip/Save
@@ -243,22 +264,52 @@ export default function BookReservationScreen({ route, navigation }) {
             <Text style={[styles.stepTitle, { marginTop: 28 }]}>Select a date</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dateScroll}>
               {dates.map((d) => {
-                const isSelected = formatDate(d) === formatDate(selectedDate);
+                const iso = formatDate(d);
+                const isSelected = iso === formatDate(selectedDate);
+                const isDisabled = Object.prototype.hasOwnProperty.call(disabledDates, iso);
+                const disabledReason = isDisabled ? disabledDates[iso] : null;
                 return (
                   <TouchableOpacity
-                    key={formatDate(d)}
-                    style={[styles.dateCard, isSelected && styles.dateCardActive]}
-                    onPress={() => setSelectedDate(d)}
+                    key={iso}
+                    style={[
+                      styles.dateCard,
+                      isSelected && !isDisabled && styles.dateCardActive,
+                      isDisabled && styles.dateCardDisabled,
+                    ]}
+                    onPress={() => {
+                      if (isDisabled) {
+                        // Show why instead of silently no-op'ing.
+                        Alert.alert(
+                          'Closed',
+                          disabledReason || 'Reservations are not available on this date.'
+                        );
+                        return;
+                      }
+                      setSelectedDate(d);
+                    }}
                   >
-                    <Text style={[styles.dateDay, isSelected && styles.dateDayActive]}>
+                    <Text style={[
+                      styles.dateDay,
+                      isSelected && !isDisabled && styles.dateDayActive,
+                      isDisabled && styles.dateTextDisabled,
+                    ]}>
                       {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]}
                     </Text>
-                    <Text style={[styles.dateNum, isSelected && styles.dateNumActive]}>
+                    <Text style={[
+                      styles.dateNum,
+                      isSelected && !isDisabled && styles.dateNumActive,
+                      isDisabled && styles.dateTextDisabled,
+                    ]}>
                       {d.getDate()}
                     </Text>
-                    <Text style={[styles.dateMonth, isSelected && styles.dateMonthActive]}>
+                    <Text style={[
+                      styles.dateMonth,
+                      isSelected && !isDisabled && styles.dateMonthActive,
+                      isDisabled && styles.dateTextDisabled,
+                    ]}>
                       {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]}
                     </Text>
+                    {isDisabled && <Text style={styles.dateClosedTag}>—</Text>}
                   </TouchableOpacity>
                 );
               })}
@@ -540,6 +591,10 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   dateCardActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  // Tier F2 disabled-date styling
+  dateCardDisabled: { backgroundColor: Colors.borderLight, borderColor: Colors.borderLight, opacity: 0.7 },
+  dateTextDisabled: { color: Colors.textLight, textDecorationLine: 'line-through' },
+  dateClosedTag: { fontSize: 10, color: Colors.textLight, marginTop: 2 },
   dateDay: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
   dateDayActive: { color: 'rgba(255,255,255,0.8)' },
   dateNum: { fontSize: 22, fontWeight: '700', color: Colors.text, marginVertical: 2 },

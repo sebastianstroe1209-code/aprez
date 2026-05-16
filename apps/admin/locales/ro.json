@@ -52,5 +52,39 @@
     "errorTooLarge": "Fișier prea mare. Maxim 10 MB.",
     "errorWrongType": "Sunt permise doar fișiere PDF.",
     "errorGeneric": "Nu am putut încărca meniul."
+  },
+  "disabledDates": {
+    "sectionTitle": "Zile fără rezervări",
+    "sectionHint": "Blochează zile specifice de la primirea rezervărilor — evenimente private, sărbători, închideri de bucătărie etc.",
+    "loading": "Se încarcă…",
+    "empty": "Nicio zi blocată momentan.",
+    "dateLabel": "Data",
+    "reasonLabel": "Motiv (opțional)",
+    "reasonPlaceholder": "ex. Eveniment privat, renovare bucătărie",
+    "addButton": "Adaugă",
+    "saving": "Se salvează…",
+    "removeButton": "Șterge",
+    "removeConfirm": "Ștergi această zi blocată?",
+    "errorAlreadyExists": "Această dată este deja pe lista zilelor blocate.",
+    "errorPast": "Data trebuie să fie astăzi sau în viitor.",
+    "errorGeneric": "Nu am putut salva. Încearcă din nou.",
+    "errorLoad": "Nu am putut încărca zilele blocate."
+  },
+  "sectionOps": {
+    "editGridButton": "Editează grila",
+    "deleteSectionButton": "Șterge secțiunea",
+    "editTitle": "Editează grila pentru {name}",
+    "rowsLabel": "Rânduri",
+    "colsLabel": "Coloane",
+    "saveButton": "Salvează",
+    "cancelButton": "Anulează",
+    "saving": "Se salvează…",
+    "shrinkError": "Nu poți micșora — {count} masă/mese ar ieși din noua grilă: {samples}.",
+    "deleteConfirmTitle": "Ștergi această secțiune?",
+    "deleteConfirmBody": "Această acțiune șterge secțiunea și toate mesele sale. Rezervările anterioare vor fi păstrate dar dezasociate de aceste mese.",
+    "deleteButton": "Șterge definitiv",
+    "deleting": "Se șterge…",
+    "deleteBlocked": "Secțiunea are {count} rezervare/rezervări viitoare. Anulează-le sau mută-le înainte de ștergere.",
+    "errorGeneric": "Nu am putut finaliza acțiunea."
   }
 }

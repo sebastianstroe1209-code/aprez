@@ -52,5 +52,39 @@
     "errorTooLarge": "File is too large. Max 10 MB.",
     "errorWrongType": "Only PDF files are allowed.",
     "errorGeneric": "Could not upload menu."
+  },
+  "disabledDates": {
+    "sectionTitle": "Reservation-Disabled Days",
+    "sectionHint": "Block specific dates from receiving reservations — private events, holidays, kitchen closures, etc.",
+    "loading": "Loading…",
+    "empty": "No disabled dates configured.",
+    "dateLabel": "Date",
+    "reasonLabel": "Reason (optional)",
+    "reasonPlaceholder": "e.g. Private event, kitchen renovation",
+    "addButton": "Add",
+    "saving": "Saving…",
+    "removeButton": "Remove",
+    "removeConfirm": "Remove this disabled date?",
+    "errorAlreadyExists": "This date is already on the disabled list.",
+    "errorPast": "Date must be today or in the future.",
+    "errorGeneric": "Could not save. Try again.",
+    "errorLoad": "Could not load disabled dates."
+  },
+  "sectionOps": {
+    "editGridButton": "Edit grid",
+    "deleteSectionButton": "Delete section",
+    "editTitle": "Edit grid for {name}",
+    "rowsLabel": "Grid rows",
+    "colsLabel": "Grid columns",
+    "saveButton": "Save",
+    "cancelButton": "Cancel",
+    "saving": "Saving…",
+    "shrinkError": "Can't shrink — {count} table(s) would fall outside the new grid: {samples}.",
+    "deleteConfirmTitle": "Delete this section?",
+    "deleteConfirmBody": "This removes the section and all of its tables. Past reservations will be kept but unlinked from these tables.",
+    "deleteButton": "Delete forever",
+    "deleting": "Deleting…",
+    "deleteBlocked": "This section has {count} future reservation(s). Cancel or reassign them before deleting.",
+    "errorGeneric": "Could not complete that action."
   }
 }

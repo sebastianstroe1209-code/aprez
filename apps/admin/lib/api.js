@@ -24,7 +24,13 @@ async function handleResponse(response) {
       || data.message
       || data.errors?.map(e => e.msg).join(', ')
       || `HTTP ${response.status}`
-    throw new Error(msg)
+    const err = new Error(msg)
+    // Preserve the raw payload + status so callers can inspect structured
+    // error codes (Tier F2 `shrink-orphans-tables` carries an orphanCount
+    // and a sampleTables[] for the UI to render specifics).
+    err.status = response.status
+    err.payload = data
+    throw err
   }
 
   if (response.status === 204) return null

@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { apiGet, apiPost, apiPut, apiDelete } from '../../../../../lib/api'
 
 export default function LayoutEditorPage() {
   const params = useParams()
   const restaurantId = params.id
+  const t = useTranslations('sectionOps')
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -15,6 +17,9 @@ export default function LayoutEditorPage() {
   const [showAddSection, setShowAddSection] = useState(false)
   const [showTableForm, setShowTableForm] = useState(false)
   const [selectedCell, setSelectedCell] = useState(null)
+  // Tier F commit 2: per-section ops modals (Edit grid / Delete section).
+  const [editingSection, setEditingSection] = useState(null)
+  const [deletingSection, setDeletingSection] = useState(null)
 
   const [newSection, setNewSection] = useState({
     nameRo: '',
@@ -95,6 +100,42 @@ export default function LayoutEditorPage() {
       setTableForm({ tableNumber: '', seatCount: 2 })
     } catch (err) {
       setError(err.message)
+    }
+  }
+
+  // Tier F2: Edit grid + Delete section. Both API paths surface
+  // structured 409 errors (shrink-orphans-tables / section-has-reservations).
+  // api.js attaches the parsed JSON to err.payload so we can pull
+  // sampleTables / count without a second round-trip.
+  const handleSaveGrid = async (section, gridRows, gridColumns) => {
+    try {
+      const updated = await apiPut(`/api/admin/sections/${section.id}`, { gridRows, gridColumns })
+      setSections((prev) => prev.map((s) => (s.id === section.id ? { ...s, ...updated } : s)))
+      setEditingSection(null)
+      return null
+    } catch (err) {
+      if (err.payload?.error?.code === 'shrink-orphans-tables') {
+        const samples = (err.payload.error.sampleTables || []).map((o) => o.tableNumber).join(', ') || '—'
+        return t('shrinkError', { count: err.payload.error.orphanCount ?? '?', samples })
+      }
+      return err.message || t('errorGeneric')
+    }
+  }
+
+  const handleDeleteSection = async (section) => {
+    try {
+      await apiDelete(`/api/admin/sections/${section.id}`)
+      setSections((prev) => prev.filter((s) => s.id !== section.id))
+      if (activeSection === section.id) {
+        setActiveSection(sections.find((s) => s.id !== section.id)?.id || null)
+      }
+      setDeletingSection(null)
+      return null
+    } catch (err) {
+      if (err.payload?.error?.code === 'section-has-reservations') {
+        return t('deleteBlocked', { count: err.payload.error.count ?? '?' })
+      }
+      return err.message || t('errorGeneric')
     }
   }
 
@@ -207,6 +248,24 @@ export default function LayoutEditorPage() {
         </div>
       )}
 
+      {/* Edit-grid modal (Tier F2) */}
+      {editingSection && (
+        <EditGridModal
+          section={editingSection}
+          onCancel={() => setEditingSection(null)}
+          onSave={handleSaveGrid}
+        />
+      )}
+
+      {/* Delete-section confirmation modal (Tier F2) */}
+      {deletingSection && (
+        <DeleteSectionModal
+          section={deletingSection}
+          onCancel={() => setDeletingSection(null)}
+          onDelete={handleDeleteSection}
+        />
+      )}
+
       {sections.length > 0 && (
         <div className="space-y-6">
           {/* Section Tabs */}
@@ -229,9 +288,31 @@ export default function LayoutEditorPage() {
           {/* Grid Editor */}
           {currentSection && (
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                {currentSection.nameEn || currentSection.nameRo}
-              </h2>
+              <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+                <h2 className="text-lg font-semibold text-gray-800">
+                  {currentSection.nameEn || currentSection.nameRo}
+                  <span className="ml-2 text-xs text-gray-500 font-normal">
+                    {currentSection.gridRows}×{currentSection.gridColumns}
+                  </span>
+                </h2>
+                {/* Tier F2 — per-section ops */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingSection(currentSection)}
+                    className="text-sm px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    ✏️ {t('editGridButton')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingSection(currentSection)}
+                    className="text-sm px-3 py-1.5 rounded border border-red-300 text-red-700 hover:bg-red-50"
+                  >
+                    🗑 {t('deleteSectionButton')}
+                  </button>
+                </div>
+              </div>
 
               {showTableForm && selectedCell && (
                 <div className="mb-6 p-4 border border-primary rounded-lg bg-primary-bg">
@@ -376,6 +457,137 @@ export default function LayoutEditorPage() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// --------------------------------------------------------------------
+// Tier F commit 2 — inline modals for per-section ops.
+// Kept local to this page so they don't escape into shared component
+// land prematurely; refactor when a second page needs them.
+// --------------------------------------------------------------------
+
+function EditGridModal({ section, onCancel, onSave }) {
+  const t = useTranslations('sectionOps')
+  const [rows, setRows] = useState(section.gridRows)
+  const [cols, setCols] = useState(section.gridColumns)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSave = async () => {
+    if (saving) return
+    setError('')
+    setSaving(true)
+    const errMsg = await onSave(section, parseInt(rows), parseInt(cols))
+    setSaving(false)
+    if (errMsg) setError(errMsg)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">
+          {t('editTitle', { name: section.nameEn || section.nameRo })}
+        </h3>
+        {error && (
+          <div className="mb-3 p-3 bg-red-50 border border-red-300 text-red-700 rounded text-sm">
+            {error}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('rowsLabel')}</label>
+            <input
+              type="number"
+              min={1}
+              max={30}
+              value={rows}
+              onChange={(e) => setRows(e.target.value)}
+              disabled={saving}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('colsLabel')}</label>
+            <input
+              type="number"
+              min={1}
+              max={30}
+              value={cols}
+              onChange={(e) => setCols(e.target.value)}
+              disabled={saving}
+              className="w-full"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+          >
+            {t('cancelButton')}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded bg-primary text-white font-medium hover:bg-primary-dark disabled:opacity-60"
+          >
+            {saving ? t('saving') : t('saveButton')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DeleteSectionModal({ section, onCancel, onDelete }) {
+  const t = useTranslations('sectionOps')
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleConfirm = async () => {
+    if (deleting) return
+    setError('')
+    setDeleting(true)
+    const errMsg = await onDelete(section)
+    setDeleting(false)
+    if (errMsg) setError(errMsg)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-2">{t('deleteConfirmTitle')}</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          <span className="font-medium">{section.nameEn || section.nameRo}</span> — {t('deleteConfirmBody')}
+        </p>
+        {error && (
+          <div className="mb-3 p-3 bg-red-50 border border-red-300 text-red-700 rounded text-sm">
+            {error}
+          </div>
+        )}
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={deleting}
+            className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+          >
+            {t('cancelButton')}
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={deleting}
+            className="px-4 py-2 rounded bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-60"
+          >
+            {deleting ? t('deleting') : t('deleteButton')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

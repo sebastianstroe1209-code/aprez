@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { apiGet, apiPut, apiPost } from '../../../../lib/api'
 import PhotosSection from '../../../../components/PhotosSection'
 import MenuSection from '../../../../components/MenuSection'
+import DisabledDatesSection from '../../../../components/DisabledDatesSection'
 
 const CUISINE_TYPES = [
   'Romanian',
@@ -558,6 +559,10 @@ export default function EditRestaurantPage() {
             + Add Service Period
           </button>
         </div>
+
+        {/* Reservation-Disabled Days (Tier F commit 2). Sits between
+            Service Periods and Photos per spec ordering. */}
+        <DisabledDatesSection restaurantId={id} />
 
         {/* Photos (Tier F commit 1) — full restaurant.photos[] payload
             includes isCover so the section can render cover state without
