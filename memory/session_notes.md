@@ -4,7 +4,26 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-17. Tier I commit 2 fix-the-fix #3 SHIPPED on top of #2 — TDZ regression on Live page first render in confirm-mode resolved.** Two bugs introduced by fix #2 (commit 698e9e8):
+**Last session: 2026-05-17. Tier I commit 2 fix-the-fix #4 SHIPPED — OverrideConfirmModal now actually reachable from soft-ineligible card click (not just a window.alert with the raw backend string).** Cowork manual QA caught that the click handler in confirm-mode surfaced a browser alert instead of the localized modal, despite all the prior fix-the-fixes wiring the modal component itself.
+
+**Root cause.** The restaurant app's `apps/restaurant/lib/api.js` `handleResponse` threw a bare `new Error(msg)` without attaching `err.payload` + `err.status`. The live-page catch at `handleAssignFromConfirm` reads `err?.payload?.error?.code` — always undefined → branch always missed → fell through to `alert('Failed to assign table: ' + err.message)`. The **admin** app got `err.payload` attachment in Tier F2 (commit `d2fea93`), but the **restaurant** equivalent was never patched. Two parallel api.js files, only one fixed.
+
+**Fix.** Mirrored the admin pattern in `apps/restaurant/lib/api.js`: attach `err.status = response.status` + `err.payload = data` in the !ok branch of `handleResponse`. One-semantic-line change. Defensive infrastructure — benefits any future structured-error handling on the restaurant side (modification 409s, disabled-date 400s, etc., though those flows had no current consumer requiring this).
+
+**Source-grep sweep across `apps/restaurant/`** for `/assign-table` PUTs: exactly ONE call site — `live/page.js:182` inside `handleAssignFromConfirm`. The popup's `reassignTable` action variant forwards via `onAction`, but the Live page's `onAction` callback just closes the popup + refetches (no PUT). No second wiring site to fix.
+
+**New defensive smoke** at `server/.smoke/c6-assign-table-override-wiring-test.js` (14/14 PASS):
+- Static source-grep that `apps/restaurant/lib/api.js` retains the `err.payload = data` + `err.status = response.status` attachments (catches the regression class even if no runtime path triggers).
+- End-to-end runtime assertion that `PUT /assign-table` on a party-too-large condition returns 409 with the full structured body (`error.code='party-too-large'`, `tableLabel`, `seatCount`, `partySize`, `mergeGroupId`) AND that the simulated api.js convention populates `err.payload.error` correctly.
+- Re-PUT with `{ force: true }` → 200 + reservation.tableId mutated.
+
+**Full regression battery green**: c6-live-grid-layout-test 18/18, c6-popup-actions 19/19, c6-assign-table-override-wiring 14/14, Tier I1 12/12, Tier E1 31/31, Tier E2 33/33, Tier F2 24/24, Tier D2 22/22, C1 dispatcher 12/12.
+
+QA fixture preserved (section `7c09e62a-...` + reservation `4577ea13-...`). Sebastian re-walks the manual confirm-mode click — modal should now render with localized copy ("Party doesn't fit this table" / "Numărul de persoane depășește masa"), Confirm re-POSTs with force=true, success toast appears.
+
+**Earlier this session:**
+
+Tier I commit 2 fix-the-fix #3 SHIPPED on top of #2 — TDZ regression on Live page first render in confirm-mode resolved.** Two bugs introduced by fix #2 (commit 698e9e8):
 
 1. **TDZ ReferenceError on every confirm-mode mount.** Fix #2 hoisted `handleDragOver` (useCallback with deps `[dragSourceId, tables, liveByTableId]`) above the declaration of `tables`. `useCallback`'s dep array is evaluated synchronously during render, so the page crashed with Next.js's runtime error overlay: `ReferenceError: Cannot access 'tables' before initialization` at `live/page.js:268`.
 

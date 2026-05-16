@@ -24,7 +24,18 @@ async function handleResponse(response) {
       || data.message
       || data.errors?.map(e => e.msg).join(', ')
       || `HTTP ${response.status}`
-    throw new Error(msg)
+    const err = new Error(msg)
+    // Tier I commit 2 fix-the-fix #4 — attach the raw status + parsed
+    // payload so callers can read structured error.code fields (e.g.
+    // `party-too-large` on assign-table 409 → routes to OverrideModal
+    // in live/page.js). Mirrors the admin app's lib/api.js shape
+    // (added there in Tier F2 for the same reason). Without this, the
+    // catch site on the assign-table click handler fell through to a
+    // raw window.alert() with the backend message verbatim — bypassing
+    // the localized OverrideConfirmModal entirely.
+    err.status = response.status
+    err.payload = data
+    throw err
   }
 
   if (response.status === 204) return null
