@@ -4,7 +4,35 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier I commit 2 fix-the-fix SHIPPED on top of I2 + I1. Tier E + Tier F + Tier D FULLY COMPLETE from earlier in the session.** Cowork's I2 browser QA caught one blocking bug + two cosmetic touches; all three closed in this fix commit, plus the QA debris cleanup. Full record in SPEC §15 Resolved-by-Tier-I-commit-2 fix-the-fix entry.
+**Last session: 2026-05-17. Tier I commit 2 fix-the-fix #2 SHIPPED — Live confirm-mode renderer hang resolved. Tier E + Tier F + Tier D all FULLY COMPLETE from earlier sessions.** Cowork browser QA caught a 45s+ renderer freeze on subsequent state changes in confirm-mode (Chrome extension reported "renderer may be frozen or unresponsive"; CDP Runtime.evaluate timed out). First render fine; second interaction → hang. Reproduced on fresh tabs.
+
+**Root cause (best inference — no live repro was possible since the freeze blocks DevTools).** The Live page's JSX had an inline IIFE that rebuilt the merge-group Map + claimedCells Set + bounding-box math + L-shape detection on EVERY parent render — including renders triggered by `dragHover`, `overrideInfo`, popup state, 30s interval, any state change unrelated to merge layout. Combined with per-cell `t()` lookups and inline-arrow `onDragOver`/`onDrop` handlers (new fn references each render → React re-attaches listeners on every cell), the per-interaction cost compounded under React 18 concurrent rendering until it freezing the renderer.
+
+**Fix (three-part, all in one commit):**
+- Extracted the IIFE's pure computation into `apps/restaurant/lib/liveGridLayout.js` (`computeLiveGridLayout(tables, liveByTableId)` → `{ mergeGroups, claimedCells }`). Plain JS, no React imports, Node-importable.
+- Live page wraps it in `useMemo` keyed on `[tables, liveByTableId]` — transient state changes no longer recompute.
+- `useCallback` on `handleDragStart`/`handleDragEnd`/`handleDragOver`/`handleDragLeave` so per-cell drag handler refs stay stable across renders.
+- Hoisted per-cell tooltip translations (`t('merge.handleTooltip')`, `t('override.tinyHint')`) once per render.
+- Helper returns mergeGroups sorted by groupId so React `key` stability holds.
+
+**Perf guard at `server/.smoke/c6-live-grid-layout-test.js`** — 18/18 PASS:
+- Purity (same input → same output across two calls)
+- Rect vs L-shape detection (no phantom corner cell on L-shapes)
+- Inactive merges filtered
+- Deterministic groupId ordering for React `key` stability
+- Empty-case fast path
+- **O(N) perf budget**: 1000 tables × 250 merges in <50ms (measured 1.18ms)
+This catches the regression class as a Node smoke fail rather than a 45s browser hang.
+
+**QA debris cleanup**: reservation `ddef5ce5...` CANCELLED via staff endpoint + section `02b4a90f...` (9 tables) deleted via the F2 admin endpoint (with the TableMove pre-purge workaround for the FK known issue still deferred to Tier J).
+
+**Regression battery all green**: C6 popup-actions 19/19, Tier I1 12/12, Tier E1 31/31, Tier E2 33/33, Tier F2 24/24, Tier D2 22/22, C1 dispatcher 12/12, new c6-live-grid-layout-test 18/18.
+
+**Tier I commit 3 (calendar propagation + edge polish — "+T3" badge in first member's column per decision 4, availability hint promotion) waits for Sebastian's re-QA of the confirm-mode hang fix in Chrome** — open the URL with a fresh party-of-10 reservation, expect first render fine + subsequent state changes (section tab clicks, card clicks) to remain responsive.
+
+**Earlier this session:**
+
+Tier I commit 2 fix-the-fix SHIPPED on top of I2 + I1. Tier E + Tier F + Tier D FULLY COMPLETE from earlier in the session.** Cowork's I2 browser QA caught one blocking bug + two cosmetic touches; all three closed in this fix commit, plus the QA debris cleanup. Full record in SPEC §15 Resolved-by-Tier-I-commit-2 fix-the-fix entry.
 
 - **Blocking — OverrideModal unreachable from confirm-mode**: refactored the cell eligibility logic in `apps/restaurant/app/dashboard/live/page.js` into three buckets:
   - `hardDisabled` = OCCUPIED || OUT_OF_SERVICE (truly not assignable)

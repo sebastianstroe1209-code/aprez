@@ -11,8 +11,10 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const RESV_ID = 'b1bd28c3-0836-46b5-b6fe-cfa52b201f22';
-const SECTION_ID = '481f2692-d0c5-4466-8aac-f63b11a2f1be';
+// Updated 2026-05-17 for the second QA cycle (fix-the-fix #2 debris).
+// Override QA2 reservation + new [Tier I QA] section UUID.
+const RESV_ID = 'ddef5ce5-e58e-4126-916d-0894a1d9bb93';
+const SECTION_ID = '02b4a90f-6536-4342-a27c-f8a0e7cb3f87';
 const BASE = 'http://localhost:4000/api';
 
 async function staffToken() {

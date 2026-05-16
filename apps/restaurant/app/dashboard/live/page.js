@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { apiGet, apiPut, apiPost } from '../../../lib/api'
@@ -13,6 +13,7 @@ import OverrideModal from '../../../components/OverrideModal'
 import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
 import MinLateBadge from '../../../components/ui/MinLateBadge'
 import { useToast } from '../../../components/ui/ToastProvider'
+import { computeLiveGridLayout } from '../../../lib/liveGridLayout'
 
 // Statuses that, per memory/waiter_ux_strategy.md §3.7, carry an inline
 // guest+party+time overlay on the floor-plan card. Free + OOS render
@@ -233,15 +234,21 @@ export default function LiveFloorPlanPage() {
     return { date: today, timeStart: buchHm, timeEnd: '23:59' }
   }
 
-  const handleDragStart = (e, table) => {
+  // Tier I commit 2 fix-the-fix #2 — useCallback on drag handlers so
+  // the per-cell onDragOver/onDragLeave/onDrop wrappers don't get new
+  // function references on every parent re-render. Combined with the
+  // useMemo'd grid layout below, this kills the per-render thrash that
+  // Cowork QA caught (renderer hang on subsequent state changes in
+  // confirm-mode).
+  const handleDragStart = useCallback((e, table) => {
     setDragSourceId(table.id)
     try { e.dataTransfer.setData('text/plain', table.id); e.dataTransfer.effectAllowed = 'move' } catch (_) {}
-  }
-  const handleDragEnd = () => {
+  }, [])
+  const handleDragEnd = useCallback(() => {
     setDragSourceId(null)
     setDragHover(null)
-  }
-  const handleDragOver = (e, target) => {
+  }, [])
+  const handleDragOver = useCallback((e, target) => {
     if (!dragSourceId || !target?.table) return
     const source = tables.find((t) => t.id === dragSourceId)
     if (!source || source.id === target.table.id) return
@@ -258,13 +265,13 @@ export default function LiveFloorPlanPage() {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     setDragHover({ row: target.table.gridRow, col: target.table.gridCol })
-  }
-  const handleDragLeave = (e, target) => {
+  }, [dragSourceId, tables, liveByTableId])
+  const handleDragLeave = useCallback((e, target) => {
     if (dragHover && target?.table &&
       dragHover.row === target.table.gridRow && dragHover.col === target.table.gridCol) {
       setDragHover(null)
     }
-  }
+  }, [dragHover])
   const handleDrop = async (e, target) => {
     e.preventDefault()
     setDragHover(null)
@@ -546,6 +553,26 @@ export default function LiveFloorPlanPage() {
   const currentSection = sections.find(s => s.id === activeSection)
   const tables = currentSection?.tables || []
 
+  // Tier I commit 2 fix-the-fix #2 — memoize the merge-layout
+  // computation. Pre-fix, this lived in an IIFE inside the JSX and ran
+  // on EVERY parent render (including drag-hover, override-modal,
+  // popup, 30s tick, every setState in the page). Cowork QA caught a
+  // 45s+ renderer hang on subsequent state changes in confirm-mode —
+  // most likely the per-render IIFE rebuilding Map/Set + per-cell t()
+  // calls compounding under React 18 concurrent-mode reconciliation.
+  // The smoke at server/.smoke/c6-live-grid-layout-test.js asserts
+  // this helper stays pure + O(N).
+  const gridLayout = useMemo(
+    () => computeLiveGridLayout(tables, liveByTableId),
+    [tables, liveByTableId]
+  )
+
+  // Hoist per-cell tooltip + label translations once per render so we
+  // don't call t() once per cell in the render loop. next-intl's t()
+  // is cheap but in a 30-cell × multi-render storm it adds up.
+  const overrideTinyHint = t('override.tinyHint')
+  const dragHandleTooltip = dragHandleTooltip
+
   if (loading) {
     return <div className="text-center py-12">Loading floor plan...</div>
   }
@@ -639,45 +666,11 @@ export default function LiveFloorPlanPage() {
           <div className="text-center py-12 text-gray-500">No tables in this section</div>
         ) : (
           (() => {
-            // Build the merge-group registry for this section. Same
-            // groupId may appear under multiple member tables in
-            // liveByTableId — dedupe to avoid double-render.
-            const mergeGroups = new Map() // groupId → { merge, memberRecords[] }
-            const claimedCells = new Set() // `${row},${col}` covered by a rect merge
-            const sectionTableIds = new Set(tables.map((t) => t.id))
-            for (const tbl of tables) {
-              const merge = liveByTableId[tbl.id]?.merge
-              if (!merge || !merge.isActive) continue
-              if (!sectionTableIds.has(tbl.id)) continue
-              if (!mergeGroups.has(merge.groupId)) {
-                mergeGroups.set(merge.groupId, { merge, memberRecords: [] })
-              }
-              mergeGroups.get(merge.groupId).memberRecords.push(tbl)
-            }
-            // Compute bounding box + rect-ness per group.
-            for (const entry of mergeGroups.values()) {
-              const rs = entry.memberRecords.map((t) => t.gridRow)
-              const cs = entry.memberRecords.map((t) => t.gridCol)
-              const minR = Math.min(...rs)
-              const maxR = Math.max(...rs)
-              const minC = Math.min(...cs)
-              const maxC = Math.max(...cs)
-              const rowSpan = maxR - minR + 1
-              const colSpan = maxC - minC + 1
-              const area = rowSpan * colSpan
-              entry.bbox = { minR, minC, rowSpan, colSpan }
-              entry.isRect = area === entry.memberRecords.length
-              if (entry.isRect) {
-                for (let r = minR; r <= maxR; r++) {
-                  for (let c = minC; c <= maxC; c++) claimedCells.add(`${r},${c}`)
-                }
-              } else {
-                // L-shape fallback: claim only member cells; the per-member
-                // pass renders each one as a "linked" card.
-                for (const tbl of entry.memberRecords) claimedCells.add(`${tbl.gridRow},${tbl.gridCol}`)
-              }
-            }
-
+            // Tier I commit 2 fix-the-fix #2 — merge-layout extracted
+            // to useMemo above (computeLiveGridLayout). This IIFE now
+            // only constructs the JSX tree; no per-render Map/Set
+            // allocation, no per-render bbox math.
+            const { mergeGroups, claimedCells } = gridLayout
             return (
               <div
                 style={{
@@ -688,19 +681,13 @@ export default function LiveFloorPlanPage() {
                 }}
               >
                 {/* Pass 1: rect-merge spanning cards. CSS grid is 1-indexed. */}
-                {[...mergeGroups.values()].filter((e) => e.isRect).map((entry) => {
-                  const { merge, bbox } = entry
+                {mergeGroups.filter((e) => e.isRect).map((entry) => {
+                  const { merge, bbox, dominantStatus } = entry
                   const inConfirmMode = !!confirmReservationId
                   // For confirm-mode highlighting, treat the merge as
                   // eligible if any member is in eligibleTableIds.
                   const isEligible = inConfirmMode && eligibleTableIds &&
                     entry.memberRecords.some((tbl) => eligibleTableIds.has(tbl.id))
-                  // Aggregate status — pick the most "active" one.
-                  // OCCUPIED > AWAITING_GUEST > ARRIVING_SOON > FREE.
-                  const rank = { OCCUPIED: 4, AWAITING_GUEST: 3, ARRIVING_SOON: 2, FREE: 1, OUT_OF_SERVICE: 0 }
-                  const dominantStatus = entry.memberRecords
-                    .map((t) => t.status)
-                    .reduce((a, b) => (rank[a] >= rank[b] ? a : b), 'FREE')
                   const colors = statusColors[dominantStatus] || statusColors.FREE
                   // Tier I commit 2 fix-the-fix — soft-eligibility split.
                   // hard-disable only OCCUPIED + OUT_OF_SERVICE; capacity-only
@@ -745,14 +732,14 @@ export default function LiveFloorPlanPage() {
                       </div>
                       <div className="text-[10px] mt-1 opacity-75">{colors.label}</div>
                       {softIneligible && (
-                        <div className="text-[10px] mt-0.5 text-orange-700 font-semibold">{t('override.tinyHint')}</div>
+                        <div className="text-[10px] mt-0.5 text-orange-700 font-semibold">{overrideTinyHint}</div>
                       )}
                     </button>
                   )
                 })}
 
                 {/* Pass 1b: L-shape fallback — per-member with shared border. */}
-                {[...mergeGroups.values()].filter((e) => !e.isRect).flatMap((entry) =>
+                {mergeGroups.filter((e) => !e.isRect).flatMap((entry) =>
                   entry.memberRecords.map((tbl, idx) => {
                     const colors = statusColors[tbl.status] || statusColors.FREE
                     const inConfirmMode = !!confirmReservationId
@@ -869,8 +856,8 @@ export default function LiveFloorPlanPage() {
                                 {canDrag && (
                                   <span
                                     role="button"
-                                    aria-label={t('merge.handleTooltip')}
-                                    title={t('merge.handleTooltip')}
+                                    aria-label={dragHandleTooltip}
+                                    title={dragHandleTooltip}
                                     draggable
                                     onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, table) }}
                                     onDragEnd={(e) => { e.stopPropagation(); handleDragEnd() }}
