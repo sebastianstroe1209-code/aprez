@@ -10,6 +10,7 @@ import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 import { useReservationsTab } from '../../../lib/pendingContext'
 import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
 import MinLateBadge from '../../../components/ui/MinLateBadge'
+import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
 
 const statusBadgeColor = {
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -18,6 +19,30 @@ const statusBadgeColor = {
   CANCELLED: 'bg-red-100 text-red-800',
   COMPLETED: 'bg-gray-100 text-gray-800',
   NO_SHOW: 'bg-orange-100 text-orange-800',
+}
+
+// Tier E commit 1 — build the short "Wants: …" summary that renders
+// inline on Modifications-tab rows under the guest name. Includes only
+// the changed fields, with old → new arrows. Dates are normalized to
+// DD-MM-YYYY per SPEC §11.
+function buildModSummary(reservation, mod) {
+  if (!mod) return ''
+  const parts = []
+  if (mod.requestedDate) {
+    const ddmmyyyy = (iso) => {
+      const s = typeof iso === 'string' ? iso.slice(0, 10) : new Date(iso).toISOString().slice(0, 10)
+      const [y, m, d] = s.split('-')
+      return y && m && d ? `${d}-${m}-${y}` : s
+    }
+    parts.push(`${ddmmyyyy(reservation.date)} → ${ddmmyyyy(mod.requestedDate)}`)
+  }
+  if (mod.requestedTime) {
+    parts.push(`${reservation.time || '—'} → ${mod.requestedTime}`)
+  }
+  if (mod.requestedPartySize != null) {
+    parts.push(`×${reservation.partySize ?? '—'} → ×${mod.requestedPartySize}`)
+  }
+  return parts.join(' · ')
 }
 
 // Compute seconds-late client-side for the Reservations table (the
@@ -50,7 +75,7 @@ export default function ReservationsPage() {
   // button (and the header badge click) land on the right list.
   const initialTab = (() => {
     const fromUrl = searchParams.get('tab')
-    if (fromUrl === 'all' || fromUrl === 'pending' || fromUrl === 'today') return fromUrl
+    if (fromUrl === 'all' || fromUrl === 'pending' || fromUrl === 'today' || fromUrl === 'modifications') return fromUrl
     return 'all'
   })()
   const [tab, setTab] = useState(initialTab)
@@ -60,6 +85,16 @@ export default function ReservationsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  // Tier E commit 1 — global count of reservations with a PENDING
+  // ReservationModification. Side-loaded so the Modifications tab badge
+  // shows the right number from any tab. Refreshed on socket
+  // reservation:updated events (which fire on diner POST /modify and
+  // staff approve/reject).
+  const [modificationCount, setModificationCount] = useState(0)
+  // Tier E commit 1 — open the shared popup when a Modifications-tab
+  // row is clicked. Mounted only for this surface; other tabs keep their
+  // existing inline-action UX.
+  const [popupRow, setPopupRow] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [createForm, setCreateForm] = useState({
     guestName: '',
@@ -73,6 +108,24 @@ export default function ReservationsPage() {
   useEffect(() => {
     loadReservations()
   }, [tab])
+
+  // Tier E commit 1 — side-load the modification count from the same
+  // /reservations endpoint (which now shapes the row with
+  // modificationPending). Cheap: one fetch on mount, then re-fetch on
+  // every reservation:updated socket event so the tab badge tracks the
+  // queue in real time without the user needing to refresh.
+  const refreshModificationCount = useCallback(async () => {
+    try {
+      const all = await apiGet('/api/restaurant/reservations')
+      const n = (all || []).filter((r) => r.modificationPending && r.modificationPending.status === 'PENDING').length
+      setModificationCount(n)
+    } catch { /* count is non-critical — silent failure */ }
+  }, [])
+  useEffect(() => { refreshModificationCount() }, [refreshModificationCount])
+  useEffect(() => {
+    const unsub = subscribe('reservation:updated', () => { refreshModificationCount() })
+    return () => unsub()
+  }, [refreshModificationCount])
 
   // Publish the active tab so PendingReservationListener can suppress
   // the toast when the user is already on the Pending tab (§3.6).
@@ -99,6 +152,9 @@ export default function ReservationsPage() {
         const todayBuch = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
         const resDate = typeof r.date === 'string' ? r.date.slice(0, 10) : new Date(r.date).toISOString().slice(0, 10)
         return resDate === todayBuch
+      }
+      if (tab === 'modifications') {
+        return !!(r.modificationPending && r.modificationPending.status === 'PENDING')
       }
       return true
     }
@@ -151,6 +207,13 @@ export default function ReservationsPage() {
         // SPEC §11: dates compared in Europe/Bucharest. en-CA returns YYYY-MM-DD.
         const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
         data = await apiGet(`/api/restaurant/reservations?date=${today}`)
+      } else if (tab === 'modifications') {
+        // Tier E commit 1 — re-uses the /reservations endpoint (now
+        // shapes modificationPending into each row) and filters
+        // client-side. The Modifications-tab volume is low enough that a
+        // dedicated endpoint isn't worth the extra surface.
+        const all = await apiGet('/api/restaurant/reservations')
+        data = (all || []).filter((r) => r.modificationPending && r.modificationPending.status === 'PENDING')
       } else {
         data = await apiGet('/api/restaurant/reservations')
       }
@@ -306,6 +369,9 @@ export default function ReservationsPage() {
             { id: 'all', labelKey: 'reservations.tabAll' },
             { id: 'pending', labelKey: 'reservations.tabPending' },
             { id: 'today', labelKey: 'reservations.tabToday' },
+            // Tier E commit 1 — Modifications queue. ICU plural-ready
+            // key takes a {count} placeholder.
+            { id: 'modifications', labelKey: 'reservations.tabModifications', params: { count: modificationCount } },
           ].map((tabDef) => (
             <button
               key={tabDef.id}
@@ -316,7 +382,7 @@ export default function ReservationsPage() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              {t(tabDef.labelKey)}
+              {tabDef.params ? t(tabDef.labelKey, tabDef.params) : t(tabDef.labelKey)}
             </button>
           ))}
         </div>
@@ -342,11 +408,20 @@ export default function ReservationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {reservations.map((res) => (
+                {reservations.map((res) => {
+                  // Tier E commit 1 — Modifications tab makes rows
+                  // clickable; the popup renders the amber callout +
+                  // approve/reject inline.
+                  const isModRow = tab === 'modifications' && !!(res.modificationPending && res.modificationPending.status === 'PENDING')
+                  // Build the inline "Wants: …" summary from the
+                  // requested-fields in the modification row.
+                  const modSummary = isModRow ? buildModSummary(res, res.modificationPending) : null
+                  return (
                   <tr
                     key={res.id}
                     ref={res.id === focusId ? focusRowRef : null}
-                    className={`border-b hover:bg-gray-50 ${res.id === focusId ? 'bg-amber-50' : ''}`}
+                    onClick={isModRow ? () => setPopupRow(res) : undefined}
+                    className={`border-b hover:bg-gray-50 ${res.id === focusId ? 'bg-amber-50' : ''} ${isModRow ? 'cursor-pointer' : ''}`}
                   >
                     <td className="px-6 py-4 text-sm">
                       <div className="flex items-center gap-1">
@@ -355,6 +430,11 @@ export default function ReservationsPage() {
                       </div>
                       {res.specialRequests && (
                         <div className="text-xs text-gray-500 italic mt-1">Note: {res.specialRequests}</div>
+                      )}
+                      {isModRow && (
+                        <div className="text-xs text-amber-800 italic mt-1">
+                          {t('reservations.modificationDiffInline', { summary: modSummary })}
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-4 text-sm">{res.guestPhone || res.user?.phone || 'N/A'}</td>
@@ -434,12 +514,23 @@ export default function ReservationsPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* Tier E commit 1 — popup for the Modifications tab. The popup
+          handles approve/reject internally + toasts on success. */}
+      {popupRow && (
+        <ReservationDetailPopup
+          reservation={popupRow}
+          isOpen={!!popupRow}
+          onClose={() => { setPopupRow(null); loadReservations(true); refreshModificationCount() }}
+        />
+      )}
 
       {/* Create Modal */}
       {showCreateModal && (

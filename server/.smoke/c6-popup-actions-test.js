@@ -137,5 +137,51 @@ const PENDING = {
 };
 check('F Pending: actionsForStatus', actionsForStatus(PENDING), ['confirm', 'reject', 'edit', 'cancel']);
 
+// ============================================================
+// SCENARIO G — Tier E commit 1: modification-pending on a CONFIRMED
+// reservation. The modification-pending sub-object takes precedence
+// over the normal CONFIRMED action matrix and surfaces only the
+// approve/reject pair.
+// ============================================================
+const MOD_PENDING_ON_CONFIRMED = {
+  status: 'CONFIRMED',
+  tableId: 't9',
+  seatedAt: null,
+  table: { id: 't9', status: 'FREE' },
+  modificationPending: {
+    id: 'mod-1',
+    status: 'PENDING',
+    requestedTime: '20:00',
+  },
+};
+check('G Modification pending on CONFIRMED: actionsForStatus',
+  actionsForStatus(MOD_PENDING_ON_CONFIRMED),
+  ['confirm', 'reject']);
+
+// ============================================================
+// SCENARIO H — modification sub-object exists but status is APPROVED
+// (resolved). Should fall through to the normal CONFIRMED matrix.
+// ============================================================
+const MOD_RESOLVED_ON_CONFIRMED = {
+  status: 'CONFIRMED',
+  tableId: 't9',
+  seatedAt: null,
+  table: { id: 't9', status: 'FREE' },
+  modificationPending: { id: 'mod-2', status: 'APPROVED' },
+};
+check('H Modification resolved on CONFIRMED: actionsForStatus',
+  actionsForStatus(MOD_RESOLVED_ON_CONFIRMED),
+  ['edit', 'reassignTable', 'cancel']);
+
+// ============================================================
+// SCENARIO I — Legacy: literal MODIFICATION_PENDING status (never set
+// in practice today, but kept as a defensive branch). Should return
+// approve/reject.
+// ============================================================
+const LEGACY_MOD_STATUS = { status: 'MODIFICATION_PENDING' };
+check('I Legacy MODIFICATION_PENDING status: actionsForStatus',
+  actionsForStatus(LEGACY_MOD_STATUS),
+  ['confirm', 'reject']);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

@@ -48,7 +48,24 @@ function isAwaitingGuestDerived(reservation) {
   return false
 }
 
+// Tier E commit 1 — modification approval branches on payload, not
+// status. The diner POST /modify intentionally does NOT flip
+// Reservation.status (SPEC §5.6: "original stays active") — it instead
+// attaches a `modificationPending` sub-object. So any reservation with
+// modificationPending.status === 'PENDING' renders the approve/reject
+// pair, regardless of the literal reservation.status (typically
+// CONFIRMED / AUTO_CONFIRMED, occasionally PENDING).
+function hasPendingModification(reservation) {
+  return !!(reservation?.modificationPending && reservation.modificationPending.status === 'PENDING')
+}
+
 function actionsForStatus(reservation) {
+  // Modification-pending takes precedence over the regular state-action
+  // matrix. Staff has to decide before the row's normal lifecycle
+  // continues.
+  if (hasPendingModification(reservation)) {
+    return ['confirm', 'reject']
+  }
   const status = reservation?.status
   const hasTable = hasAssignedTable(reservation)
   const awaitingDerived = isAwaitingGuestDerived(reservation)
@@ -75,7 +92,11 @@ function actionsForStatus(reservation) {
     case 'NO_SHOW':
       return [] // view-only
     case 'MODIFICATION_PENDING':
-      return [] // Tier D
+      // Deprecated dead branch — the status is never set in practice
+      // (see schema enum comment). Kept here for defense-in-depth: if a
+      // legacy fixture or future migration ever produces this status,
+      // surface the approve/reject pair so staff aren't stuck.
+      return ['confirm', 'reject']
     default:
       return []
   }
@@ -84,5 +105,6 @@ function actionsForStatus(reservation) {
 module.exports = {
   hasAssignedTable,
   isAwaitingGuestDerived,
+  hasPendingModification,
   actionsForStatus,
 }

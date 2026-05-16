@@ -311,6 +311,14 @@ enum ReservationStatus {
   PENDING
   CONFIRMED
   AUTO_CONFIRMED
+  // DEPRECATED (Tier E commit 1, 2026-05-16). The modification flow
+  // intentionally does NOT flip Reservation.status when a diner
+  // requests a change — per SPEC §5.6 the original reservation stays
+  // active while the modification is pending, so a CONFIRMED row stays
+  // CONFIRMED and the pending modification is surfaced via a
+  // `modificationPending` sub-object on the socket payload. Kept in
+  // the enum to avoid an --accept-data-loss migration for cosmetic
+  // cleanup; no code path sets or reads this value.
   MODIFICATION_PENDING
   CANCELLED
   COMPLETED
@@ -331,6 +339,11 @@ model ReservationModification {
   status            ModificationStatus @default(PENDING)
   createdAt         DateTime  @default(now()) @map("created_at")
   resolvedAt        DateTime? @map("resolved_at")
+  // Tier E commit 1 — stamped when the diner has seen the staff's
+  // approve/reject decision and (in the rejected case) chosen to keep
+  // or cancel the original reservation. Endpoint that writes this lands
+  // in E2; column added in E1 so the schema is in place when E2 wires.
+  acknowledgedAt    DateTime? @map("acknowledged_at")
 
   reservation       Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 

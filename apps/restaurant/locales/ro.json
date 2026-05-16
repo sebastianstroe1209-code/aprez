@@ -24,6 +24,8 @@
     "tabAll": "Toate",
     "tabPending": "În așteptare",
     "tabToday": "Astăzi",
+    "tabModifications": "Modificări ({count})",
+    "modificationDiffInline": "Solicită: {summary}",
     "unassignedTable": "[fără masă]"
   },
   "actions": {
@@ -40,7 +42,9 @@
     "reassignTable": "Reatribuie masa",
     "edit": "Modifică",
     "noshow": "Marchează ne-prezentare",
-    "save": "Salvează"
+    "save": "Salvează",
+    "approveModification": "Aprobă modificarea",
+    "rejectModification": "Respinge modificarea"
   },
   "settings": {
     "title": "Setări",
@@ -71,7 +75,12 @@
     "noTableAssigned": "Masă neatribuită",
     "noPhone": "Fără telefon",
     "noActionsAvailable": "Nicio acțiune disponibilă pentru această stare.",
-    "modificationDeferred": "Aprobarea modificării vine în Tier D."
+    "modificationCallout": "Modificări solicitate:",
+    "modificationDate": "Dată: {old} → {new}",
+    "modificationTime": "Ora: {old} → {new}",
+    "modificationParty": "Persoane: {old} → {new}",
+    "modificationApproved": "Modificare aprobată.",
+    "modificationRejected": "Modificare respinsă."
   },
   "quickAdd": {
     "button": {

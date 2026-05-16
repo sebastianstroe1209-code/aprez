@@ -24,6 +24,8 @@
     "tabAll": "All",
     "tabPending": "Pending",
     "tabToday": "Today",
+    "tabModifications": "Modifications ({count})",
+    "modificationDiffInline": "Wants: {summary}",
     "unassignedTable": "[unassigned]"
   },
   "actions": {
@@ -40,7 +42,9 @@
     "reassignTable": "Reassign table",
     "edit": "Edit",
     "noshow": "Mark no-show",
-    "save": "Save"
+    "save": "Save",
+    "approveModification": "Approve change",
+    "rejectModification": "Reject change"
   },
   "settings": {
     "title": "Settings",
@@ -71,7 +75,12 @@
     "noTableAssigned": "No table assigned",
     "noPhone": "No phone",
     "noActionsAvailable": "No actions available for this state.",
-    "modificationDeferred": "Modification approval ships in Tier D."
+    "modificationCallout": "Requested changes:",
+    "modificationDate": "Date: {old} → {new}",
+    "modificationTime": "Time: {old} → {new}",
+    "modificationParty": "Party: {old} → {new}",
+    "modificationApproved": "Modification approved.",
+    "modificationRejected": "Modification rejected."
   },
   "quickAdd": {
     "button": {

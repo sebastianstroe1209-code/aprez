@@ -38,7 +38,7 @@ import MinLateBadge from './ui/MinLateBadge'
 // Pure framework-free helpers (CJS module). Extracted so the same logic
 // is consumed by the Node smoke at server/.smoke/c6-popup-actions-test.js —
 // single source of truth, no copy-paste divergence.
-import { actionsForStatus } from '../lib/popupActions'
+import { actionsForStatus, hasPendingModification } from '../lib/popupActions'
 
 function isWithinAnyServicePeriod(profile, time) {
   const periods = profile?.servicePeriods || []
@@ -55,6 +55,15 @@ function isoDateOnly(d) {
   if (!d) return ''
   const s = typeof d === 'string' ? d : d.toISOString()
   return s.slice(0, 10)
+}
+
+// Tier E commit 1 — format a date for the amber modification-diff
+// callout. SPEC §11: DD-MM-YYYY for both locales.
+function formatDiffDate(d) {
+  if (!d) return '—'
+  const iso = isoDateOnly(d)
+  const [y, m, day] = iso.split('-')
+  return y && m && day ? `${day}-${m}-${y}` : iso
 }
 
 // State→actions matrix per §3.1 lives in lib/popupActions.js (above import).
@@ -309,9 +318,54 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
     }
   }
 
+  // Tier E commit 1 — modification approve/reject. When the reservation
+  // has a pending modification, the action button row collapses to
+  // [confirm, reject] (per popupActions.js); we intercept those clicks
+  // here and route to the modification-specific endpoints rather than
+  // the regular reservation lifecycle handlers in the parent's onAction.
+  const handleApproveModification = async () => {
+    const modId = current?.modificationPending?.id
+    if (processingAction || !modId) return
+    setProcessingAction('confirm')
+    setActionError('')
+    try {
+      await apiPut(`/api/restaurant/modifications/${modId}/approve`)
+      // The reservation:updated socket event will reshape `current` —
+      // including clearing modificationPending — so no manual setCurrent
+      // needed. Just toast + close on the way out.
+      showToast(t('popup.modificationApproved'), { variant: 'success' })
+      onClose()
+    } catch (err) {
+      setActionError(err?.message || 'Failed to approve modification')
+    } finally {
+      setProcessingAction(null)
+    }
+  }
+
+  const handleRejectModification = async () => {
+    const modId = current?.modificationPending?.id
+    if (processingAction || !modId) return
+    setProcessingAction('reject')
+    setActionError('')
+    try {
+      await apiPut(`/api/restaurant/modifications/${modId}/reject`)
+      showToast(t('popup.modificationRejected'), { variant: 'info' })
+      onClose()
+    } catch (err) {
+      setActionError(err?.message || 'Failed to reject modification')
+    } finally {
+      setProcessingAction(null)
+    }
+  }
+
   const handleAction = (actionType) => {
     if (actionType === 'noshow') return handleNoShow()
     if (actionType === 'edit') return enterEditMode()
+    // Modification-pending takes precedence on the confirm/reject pair.
+    if (hasPendingModification(current)) {
+      if (actionType === 'confirm') return handleApproveModification()
+      if (actionType === 'reject') return handleRejectModification()
+    }
     if (onAction) onAction(actionType, current)
   }
 
@@ -500,6 +554,44 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
                 />
               </div>
 
+              {/* Tier E commit 1 — Requested changes callout. Renders
+                  only when a PENDING ReservationModification is attached.
+                  Single-line per changed field so a party-only mod shows
+                  one row, not three. */}
+              {hasPendingModification(current) && (
+                <div className="mb-4 bg-amber-50 border border-amber-200 rounded p-2">
+                  <p className="text-sm font-medium text-amber-900">
+                    {t('popup.modificationCallout')}
+                  </p>
+                  <ul className="text-sm text-amber-900 mt-1 space-y-0.5">
+                    {current.modificationPending.requestedDate && (
+                      <li>
+                        {t('popup.modificationDate', {
+                          old: formatDiffDate(current.date),
+                          new: formatDiffDate(current.modificationPending.requestedDate),
+                        })}
+                      </li>
+                    )}
+                    {current.modificationPending.requestedTime && (
+                      <li>
+                        {t('popup.modificationTime', {
+                          old: current.time || '—',
+                          new: current.modificationPending.requestedTime,
+                        })}
+                      </li>
+                    )}
+                    {current.modificationPending.requestedPartySize != null && (
+                      <li>
+                        {t('popup.modificationParty', {
+                          old: String(current.partySize ?? '—'),
+                          new: String(current.modificationPending.requestedPartySize),
+                        })}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
               {/* Detail grid */}
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm mb-6">
                 <div>
@@ -536,21 +628,32 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
               {/* Actions */}
               {actions.length === 0 ? (
                 <p className="text-sm text-gray-500 italic">
-                  {current.status === 'MODIFICATION_PENDING'
-                    ? t('popup.modificationDeferred')
-                    : t('popup.noActionsAvailable')}
+                  {t('popup.noActionsAvailable')}
                 </p>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {actions.map((variant) => (
-                    <ActionButton
-                      key={variant}
-                      variant={variant}
-                      onClick={() => handleAction(variant)}
-                      loading={processingAction === variant}
-                      disabled={!!processingAction && processingAction !== variant}
-                    />
-                  ))}
+                  {actions.map((variant) => {
+                    // Tier E commit 1 — when the action set is the
+                    // modification-approve pair, override the labels and
+                    // suppress the default "approve booking" subtext so
+                    // the buttons read "Approve change" / "Reject change".
+                    const isModAction = hasPendingModification(current) && (variant === 'confirm' || variant === 'reject')
+                    const labelOverride = isModAction
+                      ? (variant === 'confirm' ? 'actions.approveModification' : 'actions.rejectModification')
+                      : undefined
+                    const subtextOverride = isModAction ? null : undefined
+                    return (
+                      <ActionButton
+                        key={variant}
+                        variant={variant}
+                        label={labelOverride}
+                        subtext={subtextOverride}
+                        onClick={() => handleAction(variant)}
+                        loading={processingAction === variant}
+                        disabled={!!processingAction && processingAction !== variant}
+                      />
+                    )
+                  })}
                 </div>
               )}
             </>

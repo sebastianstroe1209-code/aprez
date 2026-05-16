@@ -103,11 +103,31 @@ router.get(
               status: true,
             },
           },
+          // Tier E commit 1 — include any outstanding PENDING modification
+          // so the new restaurant "Modifications" tab can filter without a
+          // second round-trip. Take 1 (one-at-a-time is enforced server-
+          // side by the modification-already-pending 409 in POST /modify).
+          modifications: {
+            where: { status: 'PENDING' },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
         orderBy: [{ date: 'asc' }, { time: 'asc' }],
       });
 
-      res.json(reservations);
+      // Flatten: client expects modificationPending: row | null, not an
+      // array. Keep `modifications` off the wire — the popup + tab only
+      // need to know if there's one pending.
+      const shaped = reservations.map((r) => {
+        const { modifications, ...rest } = r;
+        return {
+          ...rest,
+          modificationPending: modifications && modifications[0] ? modifications[0] : null,
+        };
+      });
+
+      res.json(shaped);
     } catch (error) {
       next(error);
     }
@@ -1105,20 +1125,22 @@ router.put(
         updateData.partySize = modification.requestedPartySize;
       }
 
-      // Update the reservation with the new values
-      const reservationAfter = await prisma.reservation.update({
-        where: { id: modification.reservationId },
-        data: updateData,
-      });
-
-      // Mark modification as approved
-      const updated = await prisma.reservationModification.update({
-        where: { id },
-        data: {
-          status: 'APPROVED',
-          resolvedAt: new Date(),
-        },
-      });
+      // Tier E commit 1: wrap both writes in $transaction so a crash
+      // between them can't leave APPROVED stamped on the modification
+      // while the reservation row is still on the old values.
+      const [reservationAfter, updated] = await prisma.$transaction([
+        prisma.reservation.update({
+          where: { id: modification.reservationId },
+          data: updateData,
+        }),
+        prisma.reservationModification.update({
+          where: { id },
+          data: {
+            status: 'APPROVED',
+            resolvedAt: new Date(),
+          },
+        }),
+      ]);
 
       const io = req.app.get('io');
       if (reservationAfter.userId) {

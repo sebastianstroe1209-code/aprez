@@ -59,7 +59,14 @@ export default function ActionButton({
 }) {
   const t = useTranslations()
   const labelKey = label || DEFAULT_LABEL_KEY[variant]
-  const subtextKey = subtext || (AMBIGUOUS_VARIANTS.has(variant) ? DEFAULT_SUBTEXT_KEY[variant] : null)
+  // Tier E commit 1: only fall back to the default subtext when the
+  // caller passes `subtext === undefined`. Passing `null` (or '') now
+  // suppresses the subtext entirely — used by the modification-approve
+  // button so it doesn't carry "approve booking" subtext under
+  // "Approve change".
+  const subtextKey = subtext !== undefined
+    ? subtext
+    : (AMBIGUOUS_VARIANTS.has(variant) ? DEFAULT_SUBTEXT_KEY[variant] : null)
   const variantClass = VARIANT_STYLES[variant] || VARIANT_STYLES.cancel
 
   return (

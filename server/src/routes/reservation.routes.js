@@ -430,7 +430,24 @@ router.put(
   }
 );
 
-// POST /:id/modify - Request modification
+// POST /:id/modify - Request modification (SPEC §5.6)
+//
+// Hardening landed in Tier E commit 1:
+//   1. reservation-not-modifiable — pre-Tier-E only CANCELLED was
+//      blocked; COMPLETED + NO_SHOW slipped through and would have
+//      created modifications against post-service rows.
+//   2. modification-already-pending — spec is silent on outstanding-
+//      modification uniqueness, but §5.6's "original stays active" model
+//      assumes one decision at a time. 409 forces the diner to wait or
+//      retract before stacking another.
+//   3. no-op-modification — at least one requested field must be set AND
+//      must differ from the current reservation value, otherwise the
+//      staff popup would render an empty amber diff callout.
+//
+// Note (SPEC §5.6 / §9.3): modifications never re-trigger the auto-
+// confirm rule set — they always require staff approval. The spec's
+// "auto-confirmed → manual-review transition" is just describing this
+// behavior, not a code path to build.
 router.post(
   '/:id/modify',
   authenticateUser,
@@ -456,8 +473,47 @@ router.post(
         return res.status(404).json({ error: 'Reservation not found' });
       }
 
-      if (reservation.status === 'CANCELLED') {
-        return res.status(400).json({ error: 'Cannot modify a cancelled reservation' });
+      // (1) Block post-service / terminated reservations.
+      if (['COMPLETED', 'NO_SHOW', 'CANCELLED'].includes(reservation.status)) {
+        return res.status(400).json({
+          error: {
+            code: 'reservation-not-modifiable',
+            message: `Cannot modify a reservation with status ${reservation.status}.`,
+          },
+        });
+      }
+
+      // (3) Require at least one non-null requested field AND require it
+      // to actually differ from the current value. Date comparison is
+      // string-based against the YYYY-MM-DD slice to avoid TZ-driven
+      // false negatives between the request body and the DB Date column.
+      const reqDateIso = requestedDate ? new Date(requestedDate).toISOString().slice(0, 10) : null;
+      const curDateIso = new Date(reservation.date).toISOString().slice(0, 10);
+      const dateDiffers = reqDateIso !== null && reqDateIso !== curDateIso;
+      const timeDiffers = requestedTime != null && requestedTime !== reservation.time;
+      const partyDiffers = requestedPartySize != null && parseInt(requestedPartySize) !== reservation.partySize;
+      if (!dateDiffers && !timeDiffers && !partyDiffers) {
+        return res.status(400).json({
+          error: {
+            code: 'no-op-modification',
+            message: 'Requested modification must change at least one of date/time/party size.',
+          },
+        });
+      }
+
+      // (2) One pending modification at a time per reservation.
+      const existingPending = await prisma.reservationModification.findFirst({
+        where: { reservationId: id, status: 'PENDING' },
+        select: { id: true },
+      });
+      if (existingPending) {
+        return res.status(409).json({
+          error: {
+            code: 'modification-already-pending',
+            message: 'A previous modification request is still pending. Wait for the restaurant to respond.',
+            existingId: existingPending.id,
+          },
+        });
       }
 
       const modification = await prisma.reservationModification.create({
