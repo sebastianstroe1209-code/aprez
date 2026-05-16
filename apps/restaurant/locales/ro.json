@@ -98,6 +98,32 @@
     "timeoutError": "Conexiune pierdută. Reîncearcă?",
     "addDetails": "+ Adaugă detalii"
   },
+  "dashboard": {
+    "title": "Panou",
+    "currentTime": "Ora curentă: {time}",
+    "lastUpdated": "Actualizat: {time}",
+    "loadError": "Nu s-au putut încărca datele panoului.",
+    "now": {
+      "title": "În desfășurare",
+      "empty": "Liniște — încă nimeni așezat"
+    },
+    "next": {
+      "title": "Următoarele",
+      "empty": "Liniște — bucură-te de pauză",
+      "showMore": "Arată mai multe",
+      "showLess": "Arată mai puțin"
+    },
+    "search": {
+      "title": "Caută client",
+      "placeholder": "Caută după nume, telefon sau email",
+      "empty": "Niciun rezultat pentru „{query}\""
+    },
+    "stats": {
+      "today": "Rezervări azi",
+      "pending": "În așteptare",
+      "occupied": "Mese ocupate"
+    }
+  },
   "edit": {
     "title": "Modifică rezervarea",
     "field": {

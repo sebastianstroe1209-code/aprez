@@ -98,6 +98,32 @@
     "timeoutError": "Connection lost. Retry?",
     "addDetails": "+ Add details"
   },
+  "dashboard": {
+    "title": "Dashboard",
+    "currentTime": "Now: {time}",
+    "lastUpdated": "Updated {time}",
+    "loadError": "Failed to load dashboard data.",
+    "now": {
+      "title": "Now",
+      "empty": "All quiet — no one seated yet"
+    },
+    "next": {
+      "title": "Next",
+      "empty": "All quiet — enjoy the break",
+      "showMore": "Show more",
+      "showLess": "Show less"
+    },
+    "search": {
+      "title": "Search guest",
+      "placeholder": "Search by name, phone, or email",
+      "empty": "No results for \"{query}\""
+    },
+    "stats": {
+      "today": "Today's reservations",
+      "pending": "Pending confirmations",
+      "occupied": "Tables occupied"
+    }
+  },
   "edit": {
     "title": "Edit reservation",
     "field": {

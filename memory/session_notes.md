@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 item 6 (Edit existing reservation) COMPLETE — ReservationDetailPopup now supports inline edit mode: click Edit on a Pending/Confirmed/AutoConfirmed/AwaitingGuest reservation, popup swaps view-mode body for a form (Date / Time / Party / Phone / Special Requests pre-filled). Availability hint + closed-hours warning mirror QuickAdd. Pending-sync save calls PUT `/api/restaurant/reservations/:id`; 200 → success toast + return to view-mode with updated data; 409 `table-conflict` → inline specific error. Bundled with backend conflict-check addition: PUT `/reservations/:id` now rejects time/date changes that would overlap another booking on the assigned table. Schema unchanged. P3-7 (Dashboard rebuild — the big one) is next.**
+**Last session: 2026-05-16. Tier C6 Phase 3 item 7 (Dashboard rebuild) COMPLETE — replaced the pre-C6 three-tile dashboard with the §3.8 command-center layout: header strip (title + Bucharest clock + last-updated), NOW zone (Awaiting Guest + Occupied list), NEXT zone (8 upcoming with Show more → up to 24), SEARCH zone (debounced 300ms guest search), three stat tiles (today / pending / occupied). Responsive at xl (1280px): stat tiles collapse from the inline row into a right-column stack and NOW/NEXT go side-by-side. Reuses the existing `/api/restaurant/dashboard/summary` endpoint from C6 Phase 1; Show more lazy-loads via the existing `/reservations` route. All reservation rows in every zone open the shared ReservationDetailPopup. SPEC §15 §6.2 dashboard gaps marked partially-resolved. P3-8 (Calendar) + P3-9 (polish) ship as a single combined commit next.**
 
 ## Where we left off
 
@@ -46,9 +46,48 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 item 6 (Edit existing reservation) complete; P3-7 (Dashboard rebuild) is next, gated on Sebastian's approval
+## What's pending — Phase 3 item 7 (Dashboard rebuild) complete; P3-8+P3-9 (Calendar + polish, combined) is next, gated on Sebastian's approval
 
-**C6 P3-6 (Edit existing reservation) shipped this session.** Backend conflict-check + frontend inline edit mode.
+**C6 P3-7 (Dashboard rebuild) shipped this session.** Biggest user-visible change in C6. Four new components + page rewrite + SPEC §15 §6.2 update.
+
+New components in `apps/restaurant/components/dashboard/`:
+- `StatTile.jsx` — reusable count card with left-border accent (primary / amber / blue / gray). Optional `href` makes the whole tile a Link.
+- `NowZone.jsx` — active reservations list (AwaitingGuest + Occupied). Sorted by table label. Each row: time, guest name + ✦ badge, table + party, "X min late" pill if `secondsLate > 600`. Empty-state copy `dashboard.now.empty`.
+- `NextZone.jsx` — upcoming chronological list. Renders the 8 from summary by default; Show more lazy-loads up to 24 via the existing `/api/restaurant/reservations` endpoint (no date filter → returns from today onward), filters to PENDING/CONFIRMED/AUTO_CONFIRMED, dedups against the seed 8. Each row: time, guest, table + party + date, status badge. Empty-state `dashboard.next.empty`.
+- `SearchZone.jsx` — search input with `dashboard.search.placeholder`. Debounced 300ms call to `/api/restaurant/reservations/search?q=`. Results rendered as a flat list (guest name + contact + date+time+party). Click → popup. Empty input renders nothing; non-matching query → `dashboard.search.empty`.
+
+Page rewrite (`apps/restaurant/app/dashboard/page.js`):
+- Orchestrator: single `load(quiet)` fetches `/api/restaurant/dashboard/summary`, sets `lastUpdated`, manages `loading` flag (quiet=true skips the toggle for background refetches per the established pattern).
+- Socket subs: any reservation:* / table:status-changed / walkin:* event triggers `load(true)`. Aggregate-view tradeoff — surgical patching across three zones wasn't worth the per-zone wiring complexity.
+- §4.4 reconnect + tab-focus refetch via `useSocketRefetch`.
+- Header clock (`Bucharest HH:mm`) ticks every 30s via `setInterval`. Independent of data fetches.
+- Shared `<ReservationDetailPopup>` mounted at the page level; all three zones' onPick callbacks set the same popup state.
+- Responsive layout via Tailwind:
+  - `<xl` (under 1280px): stat tiles in a 3-col row at top (`grid-cols-1 sm:grid-cols-3`); NOW + NEXT stacked vertically (`grid-cols-1 xl:grid-cols-3`); SEARCH full width below.
+  - `xl+` (1280px+): stat tiles row hides (`xl:hidden`); the same three tiles render in a right-column stack inside the main grid (`hidden xl:flex xl:flex-col`); NOW + NEXT + stats column take 3 equal cols.
+
+Preserved (untouched):
+- Sidebar nav + Logout button (left rail at every breakpoint).
+- Global floating "+" Quick Add button (P3-1).
+- Global pending-confirmation header badge (P3-2).
+- Audio-consent banner (P3-2).
+- All auth gates and routing.
+- /dashboard/live, /reservations, /calendar, /settings — out of P3-7 scope, untouched.
+
+SPEC.md §15 §6.2 dashboard gaps: marked **partially resolved by Tier C6 P3-7**. Three-zone command center + dashboard-level guest search now in place; Add Reservation entry point is the global floating + button (P3-1). Notification feed + ban-client search on dashboard remain deferred (per §3.8 out-of-scope list — low-frequency ops).
+
+i18n keys added (`dashboard.*`: title, currentTime, lastUpdated, loadError, now.{title,empty}, next.{title,empty,showMore,showLess}, search.{title,placeholder,empty}, stats.{today,pending,occupied}) — 15 keys total in both ro and en.
+
+End-to-end smoke results:
+- All 6 dashboard routes serve 200 after rewrite (`/dashboard` p=84ms).
+- New dashboard files: zero hardcoded English UI strings (greppped page.js + 4 component files).
+- Summary endpoint: returns the expected shape with `currentTime`, `activeReservations`, `upcomingReservations`, `pendingConfirmationCount`, `todayCount`, `occupiedCount`.
+- Search "Ion": returns 10 matching reservations in 230ms (well within 300ms+lookup budget).
+- C4 §5a socket smoke: 7/7 events fire ✓.
+- C1 dispatcher: 12/12 SPEC §10 events route ✓.
+- Schema unchanged.
+
+**C6 P3-6 (Edit existing reservation) shipped earlier this session.** Backend conflict-check + frontend inline edit mode.
 
 Backend (`server/src/routes/restaurantPlatform.routes.js`):
 - `PUT /api/restaurant/reservations/:id` extended with conflict detection per §4.1. When `time` or `date` changes on a reservation that has a `tableId`, the endpoint fetches the reservation's current values, computes the new window, and queries for an overlapping CONFIRMED/PENDING/AUTO_CONFIRMED reservation on the same table at that date excluding the current row. If a conflict exists → 409 `{ error: 'table-conflict', tableLabel, conflictTime }`. No conflict OR no time/date change → proceeds with the existing updateMany path. Phase 1's "trust model" comment is now superseded — §4.1 mandates the check.
@@ -246,9 +285,9 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 P3-7 (Dashboard rebuild as command center) is the next code work.** Per waiter_ux_strategy.md §3.8: replace the three-numeric-tile layout on `/dashboard` with three operational zones — NOW (currently-active reservations + occupied tables), NEXT (upcoming 8 reservations chronological with "Show more" → 24), SEARCH (guest name / phone / email autocomplete with inline action buttons on each result). Tablet width 768–1280px primary target. Backend GET `/api/restaurant/dashboard/summary` already exists from C6 Phase 1; guest search reuses or extends the existing `/api/restaurant/reservations/search` endpoint. New components: NowZone.jsx, NextZone.jsx, SearchZone.jsx (per §3.8 WHERE). The pending-confirmation badge stays in the global header per §3.6 (NOT in Dashboard chrome) — Dashboard's stat tiles can show the number but the alert badge is global. Preserve existing routes + auth gates per §3.8 ("rewrite, not re-architecture").
+**C6 P3-8 (Calendar improvements) + P3-9 (Special request badges + action subtext + late-arrival display) ship as ONE combined commit next.** Per waiter_ux_strategy.md §3.10 (Calendar): "now" indicator that re-positions every minute when selectedDate===today; click empty cell opens Quick Add prefilled; click occupied cell opens popup. Per §3.11 / §3.12 / §3.13 (polish): always-visible ActionButton subtext (already shipped in Phase 2 component, just confirm wired everywhere), Special Requests ✦ badge in Reservations table + Calendar block popup (Dashboard + Live already have it), "X min late" badge in Reservations table + Calendar popup (Dashboard + Live already have it via P3-7 / P3-3). Combined commit because P3-9 items are small (mostly already implemented in shared components; just need wiring in remaining pages).
 
-Per the new no-individual-QA-gate policy: ship P3-7 with internal smoke verification; comprehensive QA happens at end-of-C6.
+Per the no-individual-QA-gate policy after P3-7 Cowork pass: P3-8+P3-9 ships with internal smoke; comprehensive Cowork QA at end-of-C6 covers the full waiter shift scenario per §8 Phase 5.
 
 Remaining Phase 3 sequence (fastest-first):
 1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped earlier this session.
@@ -256,14 +295,14 @@ Remaining Phase 3 sequence (fastest-first):
 3. ~~Live floor overlay (3.7)~~ ✓ shipped earlier this session.
 4. ~~Walk-in fast seating (3.4)~~ ✓ shipped earlier this session.
 5. ~~No-show with undo (3.5)~~ ✓ shipped earlier this session.
-6. ~~Edit existing reservation (3.9)~~ ✓ shipped this session.
-7. **Dashboard rebuild (3.8)** — next, largest item in Phase 3.
-8. Calendar improvements (3.10).
-9. Special request badges + action subtext + late-arrival display (3.11 / 3.12 / 3.13).
+6. ~~Edit existing reservation (3.9)~~ ✓ shipped earlier this session.
+7. ~~Dashboard rebuild (3.8)~~ ✓ shipped this session.
+8. **Calendar improvements (3.10) + polish (3.11 / 3.12 / 3.13)** — next, COMBINED single commit.
 
 **Resume sequence (in order):**
-1. Sebastian gives explicit approval to begin C6 P3-7 (Dashboard rebuild).
-2. Phase 3 items 7-9 (one commit each, internal smoke only) → Phase 5 (end-to-end shift QA — comprehensive Cowork verification at end-of-C6) → Tier D + E + F + I parallel block → G + H → J.
+1. **Cowork QA on `/dashboard`** at 375/768/1440 viewports — biggest user-visible change in C6. Verify three zones render, header clock ticks, search debounce works, stat tiles position correctly per breakpoint, click-to-popup flows from each zone.
+2. Sebastian gives explicit approval to begin C6 P3-8+P3-9 combined.
+3. P3-8+P3-9 (one commit, internal smoke only) → Phase 5 (end-to-end shift QA — comprehensive Cowork verification at end-of-C6) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.
