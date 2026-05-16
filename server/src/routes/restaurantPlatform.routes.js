@@ -817,6 +817,99 @@ router.put(
   }
 );
 
+// PUT /reservations/:id — generic staff edit (C6 Phase 1).
+// Used by §3.9 edit-from-popup flow. Allows time/date/party/phone/special
+// requests changes. Conflict + opening-hours validation deferred to the
+// caller for MVP — staff-initiated edits are trusted per SPEC §9.5 (same
+// trust model as staff-created reservations). Emits reservation:updated.
+//
+// Optimized to hit the budget: when `time` isn't changing we skip the
+// restaurant lookup; the existence + ownership check is collapsed into
+// the update path via `updateMany`. Typical edit (specialRequests only)
+// is 2 Railway round-trips: updateMany + final findUnique with includes.
+router.put(
+  '/reservations/:id',
+  authenticateRestaurant,
+  [
+    param('id').isUUID(),
+    body('date').optional().isISO8601(),
+    body('time').optional().matches(/^\d{2}:\d{2}$/),
+    body('partySize').optional().isInt({ min: 1 }),
+    body('guestPhone').optional().trim(),
+    body('guestName').optional().trim(),
+    body('specialRequests').optional({ nullable: true }).isString(),
+  ],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const restaurantId = req.user.restaurantId;
+      const { id } = req.params;
+      const { date, time, partySize, guestPhone, guestName, specialRequests } = req.body;
+
+      const updateData = {};
+      if (date !== undefined) updateData.date = new Date(date);
+      if (partySize !== undefined) updateData.partySize = parseInt(partySize);
+      if (guestPhone !== undefined) updateData.guestPhone = guestPhone;
+      if (guestName !== undefined) updateData.guestName = guestName;
+      if (specialRequests !== undefined) updateData.specialRequests = specialRequests || null;
+      if (time !== undefined) {
+        updateData.time = time;
+        const restaurant = await prisma.restaurant.findUnique({
+          where: { id: restaurantId },
+          select: { reservationDurationMin: true },
+        });
+        const duration = restaurant?.reservationDurationMin || 120;
+        updateData.endTime = addMinutes(time, duration);
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      const result = await prisma.reservation.updateMany({
+        where: { id, restaurantId },
+        data: updateData,
+      });
+      if (result.count === 0) {
+        return res.status(404).json({ error: 'Reservation not found' });
+      }
+
+      const updated = await prisma.reservation.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          userId: true,
+          restaurantId: true,
+          tableId: true,
+          date: true,
+          time: true,
+          endTime: true,
+          partySize: true,
+          status: true,
+          source: true,
+          specialRequests: true,
+          guestName: true,
+          guestPhone: true,
+          guestEmail: true,
+          seatedAt: true,
+          actualPartySize: true,
+          table: { select: { id: true, tableNumber: true, seatCount: true } },
+          user: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+
+      const io = req.app.get('io');
+      io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // PUT /modifications/:id/approve - Approve modification request
 router.put(
   '/modifications/:id/approve',
@@ -983,13 +1076,17 @@ router.get('/layout', authenticateRestaurant, async (req, res, next) => {
   }
 });
 
-// GET /layout/:sectionId - Get specific section with tables
+// GET /layout/:sectionId - Get specific section with tables.
+// The literal "/layout/live" is handled by a separate route declared later
+// in this file. The validator allows it through (sectionId === 'live') and
+// the handler delegates via next('route') so Express continues matching.
 router.get(
   '/layout/:sectionId',
   authenticateRestaurant,
-  [param('sectionId').isUUID()],
+  [param('sectionId').custom((v) => v === 'live' || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)).withMessage('Invalid section id')],
   handleValidationErrors,
   async (req, res, next) => {
+    if (req.params.sectionId === 'live') return next('route');
     try {
       const prisma = req.app.get('prisma');
       const restaurantId = req.user.restaurantId;
@@ -1066,10 +1163,23 @@ router.put(
       // Heuristic walk-in lifecycle signal: any explicit OCCUPIED→FREE flip at
       // this generic endpoint represents a walk-in being cleared (the
       // reservation /complete and /no-show paths free the table via Prisma
-      // directly, not via this route, so we don't double-fire).
+      // directly, not via this route, so we don't double-fire). Close the
+      // open TableActivity row if one exists so the calendar (§6.4) shows
+      // the walk-in's actual duration rather than +120min.
       if (previous?.status === 'OCCUPIED' && status === 'FREE') {
+        const openWalkin = await prisma.tableActivity.findFirst({
+          where: { tableId: id, kind: 'WALK_IN', endedAt: null },
+          orderBy: { startedAt: 'desc' },
+        });
+        if (openWalkin) {
+          await prisma.tableActivity.update({
+            where: { id: openWalkin.id },
+            data: { endedAt: tableNow },
+          });
+        }
         io.emitToRestaurant(updated.restaurantId, 'walkin:ended', {
           tableId: updated.id,
+          activityId: openWalkin?.id || null,
           endedAt: tableNow,
         });
       }
@@ -1105,10 +1215,26 @@ router.put(
         },
       });
 
+      // C6 Phase 1: persist the walk-in as a TableActivity row so calendar
+      // (§6.4) and historical reporting see it. The model existed since
+      // Tier B but had no writer; this endpoint is now its single creator.
+      const todayBuch = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
+      const activity = await prisma.tableActivity.create({
+        data: {
+          tableId: updated.id,
+          restaurantId: updated.restaurantId,
+          kind: 'WALK_IN',
+          date: new Date(`${todayBuch}T00:00:00.000Z`),
+          startedAt: tableNow,
+          partySize: parseInt(guestCount),
+        },
+      });
+
       const io = req.app.get('io');
       io.emitToRestaurant(updated.restaurantId, 'walkin:created', {
         tableId: updated.id,
-        partySize: guestCount,
+        activityId: activity.id,
+        partySize: parseInt(guestCount),
         startedAt: tableNow,
       });
       io.emitToRestaurant(updated.restaurantId, 'table:status-changed', {
@@ -1117,7 +1243,7 @@ router.put(
         statusChangedAt: tableNow,
       });
 
-      res.json(updated);
+      res.json({ ...updated, activityId: activity.id });
     } catch (error) {
       next(error);
     }
@@ -1222,12 +1348,21 @@ router.put(
   }
 );
 
-// GET /layout/live - Get current LIVE data
+// GET /layout/live - Get current LIVE data.
+// C6 Phase 1: each table object now carries `currentReservation` and
+// `nextReservation` so the floor-plan overlay (§3.7) can render guest
+// name + party + time without a second round-trip, and a `secondsLate`
+// field powers the late-arrival display (§3.13). Pre-existing
+// `occupancyDurationMin` and `hasAlert` fields are preserved.
 router.get('/layout/live', authenticateRestaurant, async (req, res, next) => {
   try {
     const prisma = req.app.get('prisma');
     const restaurantId = req.user.restaurantId;
     const now = new Date();
+    const todayBuch = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
+    const nowHm = now.toLocaleTimeString('en-GB', {
+      timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false,
+    });
 
     const tables = await prisma.restaurantTable.findMany({
       where: {
@@ -1237,10 +1372,8 @@ router.get('/layout/live', authenticateRestaurant, async (req, res, next) => {
       include: {
         reservations: {
           where: {
-            date: {
-              gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-            },
-            status: { in: ['CONFIRMED', 'AUTO_CONFIRMED'] },
+            date: new Date(`${todayBuch}T00:00:00.000Z`),
+            status: { in: ['CONFIRMED', 'AUTO_CONFIRMED', 'PENDING'] },
           },
           select: {
             id: true,
@@ -1248,12 +1381,16 @@ router.get('/layout/live', authenticateRestaurant, async (req, res, next) => {
             endTime: true,
             partySize: true,
             status: true,
+            specialRequests: true,
+            seatedAt: true,
+            guestName: true,
+            user: { select: { firstName: true, lastName: true } },
           },
+          orderBy: { time: 'asc' },
         },
       },
     });
 
-    // Calculate occupancy durations and identify alerts
     const tablesWithStatus = tables.map((table) => {
       let occupancyDurationMin = null;
       let hasAlert = false;
@@ -1261,17 +1398,48 @@ router.get('/layout/live', authenticateRestaurant, async (req, res, next) => {
       if (table.status === 'OCCUPIED' && table.statusChangedAt) {
         const minutes = Math.floor((now.getTime() - table.statusChangedAt.getTime()) / (1000 * 60));
         occupancyDurationMin = minutes;
+        if (minutes > 120) hasAlert = true;
+      }
 
-        // Red alert if table occupied for > 2 hours
-        if (minutes > 120) {
-          hasAlert = true;
-        }
+      const summarize = (r) => r && {
+        id: r.id,
+        guestName: r.guestName || [r.user?.firstName, r.user?.lastName].filter(Boolean).join(' ') || null,
+        partySize: r.partySize,
+        time: r.time,
+        hasSpecialRequests: !!(r.specialRequests && r.specialRequests.trim()),
+      };
+
+      // currentReservation: the one whose time window covers now-ish, or the
+      // one tied to the seated guest. Pick the reservation that's seated (if
+      // any) — that's authoritative — otherwise the earliest one whose
+      // window contains nowHm.
+      let current = null;
+      let next = null;
+      for (const r of table.reservations) {
+        if (r.seatedAt && !current) current = r;
+        if (!current && r.time <= nowHm && nowHm < r.endTime) current = r;
+        if (!next && r.time > nowHm) next = r;
+      }
+
+      // secondsLate: reservation is "late" when it's past its start time but
+      // the guest hasn't been seated yet AND the table is in Awaiting Guest.
+      // Negative or missing means not late.
+      let secondsLate = null;
+      const lateRef = current || table.reservations.find(r => !r.seatedAt && r.time <= nowHm);
+      if (lateRef && !lateRef.seatedAt && lateRef.time <= nowHm) {
+        const [rh, rm] = lateRef.time.split(':').map(Number);
+        const [nh, nm] = nowHm.split(':').map(Number);
+        secondsLate = ((nh * 60 + nm) - (rh * 60 + rm)) * 60;
+        if (secondsLate < 0) secondsLate = null;
       }
 
       return {
         ...table,
         occupancyDurationMin,
         hasAlert,
+        currentReservation: summarize(current),
+        nextReservation: summarize(next),
+        secondsLate,
       };
     });
 
@@ -1280,6 +1448,159 @@ router.get('/layout/live', authenticateRestaurant, async (req, res, next) => {
     next(error);
   }
 });
+
+// GET /dashboard/summary — new in C6 Phase 1.
+// Powers the rebuilt Dashboard (§3.8): NOW / NEXT / counts in a single
+// round-trip. Tablet-friendly p95 target <500ms.
+router.get('/dashboard/summary', authenticateRestaurant, async (req, res, next) => {
+  try {
+    const prisma = req.app.get('prisma');
+    const restaurantId = req.user.restaurantId;
+    const now = new Date();
+    const todayBuch = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
+    const nowHm = now.toLocaleTimeString('en-GB', {
+      timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+    const todayStart = new Date(`${todayBuch}T00:00:00.000Z`);
+
+    // Single fetch for today's reservations + table label + guest name.
+    const todays = await prisma.reservation.findMany({
+      where: {
+        restaurantId,
+        date: todayStart,
+        status: { in: ['CONFIRMED', 'AUTO_CONFIRMED', 'PENDING'] },
+      },
+      select: {
+        id: true,
+        time: true,
+        endTime: true,
+        partySize: true,
+        status: true,
+        specialRequests: true,
+        seatedAt: true,
+        guestName: true,
+        user: { select: { firstName: true, lastName: true } },
+        table: { select: { tableNumber: true, status: true } },
+      },
+      orderBy: { time: 'asc' },
+    });
+
+    const shape = (r) => {
+      const [rh, rm] = r.time.split(':').map(Number);
+      const [nh, nm] = nowHm.split(':').map(Number);
+      const minsLate = (nh * 60 + nm) - (rh * 60 + rm);
+      let secondsLate = null;
+      if (!r.seatedAt && minsLate > 0) secondsLate = minsLate * 60;
+      return {
+        id: r.id,
+        guestName: r.guestName || [r.user?.firstName, r.user?.lastName].filter(Boolean).join(' ') || null,
+        partySize: r.partySize,
+        time: r.time,
+        status: r.status,
+        tableLabel: r.table ? `T${r.table.tableNumber}` : null,
+        hasSpecialRequests: !!(r.specialRequests && r.specialRequests.trim()),
+        secondsLate,
+      };
+    };
+
+    const activeReservations = [];
+    const upcomingReservations = [];
+    for (const r of todays) {
+      const seated = !!r.seatedAt;
+      const awaiting = r.table?.status === 'AWAITING_GUEST' && !seated;
+      if (seated || awaiting) {
+        activeReservations.push(shape(r));
+      } else if (r.time >= nowHm && r.status !== 'PENDING') {
+        if (upcomingReservations.length < 8) upcomingReservations.push(shape(r));
+      }
+    }
+
+    const [pendingConfirmationCount, occupiedCount] = await Promise.all([
+      prisma.reservation.count({ where: { restaurantId, status: 'PENDING' } }),
+      prisma.restaurantTable.count({ where: { restaurantId, isActive: true, status: 'OCCUPIED' } }),
+    ]);
+
+    res.json({
+      currentTime: nowHm,
+      activeReservations,
+      upcomingReservations,
+      pendingConfirmationCount,
+      todayCount: todays.length,
+      occupiedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /availability — new in C6 Phase 1.
+// Powers the live availability hint under Quick Add (§3.3). Called on every
+// keystroke (debounced 300ms client-side); p95 target <200ms.
+router.get(
+  '/availability',
+  authenticateRestaurant,
+  [
+    query('date').isISO8601(),
+    query('time').matches(/^\d{2}:\d{2}$/),
+    query('partySize').isInt({ min: 1 }),
+  ],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const restaurantId = req.user.restaurantId;
+      const { date, time } = req.query;
+      const pSize = parseInt(req.query.partySize);
+
+      const restaurant = await prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { reservationDurationMin: true },
+      });
+      const durationMin = restaurant?.reservationDurationMin || 120;
+      const endTime = addMinutes(time, durationMin);
+
+      // SPEC §8.1: skip tables currently Occupied/OutOfService even if no
+      // future-time conflict — they aren't available to take the booking.
+      const candidates = await prisma.restaurantTable.findMany({
+        where: {
+          restaurantId,
+          isActive: true,
+          seatCount: { gte: pSize },
+          status: { notIn: ['OCCUPIED', 'OUT_OF_SERVICE'] },
+        },
+        select: { id: true, seatCount: true },
+      });
+
+      if (candidates.length === 0) {
+        return res.json({ exactMatchCount: 0, anyMatchCount: 0, suggestionForCombining: true });
+      }
+
+      const conflicting = await prisma.reservation.findMany({
+        where: {
+          restaurantId,
+          date: new Date(date),
+          tableId: { in: candidates.map((t) => t.id) },
+          status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
+          AND: [
+            { time: { lt: endTime } },
+            { endTime: { gt: time } },
+          ],
+        },
+        select: { tableId: true },
+      });
+      const conflictSet = new Set(conflicting.map((c) => c.tableId));
+
+      const free = candidates.filter((t) => !conflictSet.has(t.id));
+      const exactMatchCount = free.filter((t) => t.seatCount === pSize).length;
+      const anyMatchCount = free.length;
+      const suggestionForCombining = anyMatchCount === 0;
+
+      res.json({ exactMatchCount, anyMatchCount, suggestionForCombining });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // Waitlist routes (GET /waitlist, /waitlist/suggestions, POST /waitlist/:id/notify,
 // DELETE /waitlist/:id) removed — SPEC §6.6 cuts the waitlist system entirely.

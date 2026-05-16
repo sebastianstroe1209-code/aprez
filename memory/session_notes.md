@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C5 (i18n scaffold) COMPLETE and smoke-verified — next-intl on restaurant+admin (localStorage persistence, Europe/Bucharest timeZone), react-i18next on mobile (SecureStore persistence, backend sync via PUT /users/me/language, login seeds from User.preferredLanguage). Sample keys round-trip end-to-end through the language toggle in each app. Full string coverage is incremental — picked up as C6 work touches each component per waiter_ux_strategy.md §4.6. Schema unchanged. C6 (Waiter UX Critical Path) is the next code tier, gated on Sebastian's approval.**
+**Last session: 2026-05-16. Tier C6 Phase 1 (lock data contracts) COMPLETE and bench-verified — three new GETs (dashboard/summary, availability, layout/live augmented), one new PUT (generic reservation edit), tables/:id/seat now writes TableActivity. All seven §5a Socket.IO event payloads formally documented in `server/src/socket/events.md`. All endpoints within p95 budget after one edit-endpoint optimization. C1/C4 regressions pass. Schema unchanged. Phase 2 (shared infrastructure components) is the next code work, gated on Sebastian's approval.**
 
 ## Where we left off
 
@@ -46,11 +46,31 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Tier C5 complete; C6 (Waiter UX) is next, gated on Sebastian's approval
+## What's pending — Phase 1 complete; Phase 2 (shared infrastructure) is next, gated on Sebastian's approval
 
-**Tier C5 (i18n scaffold) shipped this session.** Plumbing in place across all three frontends; sample keys round-trip via the language toggle. Per waiter_ux_strategy.md §4.6, every new C6 string MUST go through i18n keys; older hardcoded strings get migrated as their components are touched by C6 work. Hardcoded-English remnant counts (proxy via grep, not exact): restaurant ~18, admin ~15, mobile ~25 — that's the incremental backlog. Pre-existing bug in `PUT /api/users/me/language` (referenced non-existent `language` column instead of `preferredLanguage`) was fixed because the mobile toggle calls it. URL-based locale routing (`/ro/*`, `/en/*`) deferred — would require moving every route under `app/[locale]/`, out of scaffold scope.
+**C6 Phase 1 (lock data contracts) shipped this session.** New endpoints + amended shapes are the locked contract for Phase 3 features; Phase 2 components subscribe to these payloads directly.
 
-**Tier C4 (Socket.IO frontend wiring) shipped earlier this session.** Backend emits the §5a event set; JWT handshake auto-joins rooms; all three frontends subscribe + show a Reconnecting banner per §4.4. Smoke at `server/.smoke/c4-socket-smoke.js` verifies 7/7 events end-to-end.
+Endpoints (full reference: `SPEC.md` §15 resolved section + `server/src/socket/events.md`):
+- `GET /api/restaurant/dashboard/summary` — NOW/NEXT/counts in one round-trip.
+- `GET /api/restaurant/layout/live` (augmented) — each table gets currentReservation, nextReservation, secondsLate. Fixed a pre-existing route-ordering shadow: `/layout/:sectionId`'s UUID validator was 400-ing the literal `/live` before its dedicated handler could match.
+- `GET /api/restaurant/availability` — exact + any-match counts for Quick Add live hint.
+- `PUT /api/restaurant/reservations/:id` — generic staff edit (date/time/party/phone/specialRequests).
+- `PUT /api/restaurant/tables/:id/seat` — now writes a `TableActivity { kind: WALK_IN }` row (first writer of the previously-unused model); `walkin:created` payload carries `activityId`. `walkin:ended` closes the same row on OCCUPIED→FREE transitions at `/tables/:id/status`.
+
+Performance (p95, 50 sequential calls against La Mama; all within budget):
+| Endpoint | p95 | budget |
+|---|---|---|
+| `GET /dashboard/summary` | 123ms | 500ms |
+| `GET /layout/live` | 116ms | 300ms |
+| `GET /availability` | 178ms | 200ms |
+| `GET /reservations` (today) | 62ms | 400ms |
+| `GET /reservations/pending` | 144ms | 400ms |
+| `PUT /reservations/:id` (edit) | 334ms | 400ms |
+| `PUT /tables/:id/seat` (walkin alt) | 225ms | 400ms |
+
+PUT edit needed an `updateMany` + `findUnique` refactor to drop a redundant restaurant-join round-trip — first pass came in at 697ms.
+
+Regression checks: C4 §5a smoke 7/7 events ✓, C1 dispatcher 12/12 events ✓, §8.1/§9.2/§9.3 Occupied/OOS guards still intact at all assignment paths (reservation POST auto-confirm, eligible-tables, assign-table, seat, availability — verified via grep).
 
 **Browser/Cowork verification still pending** from C4: two-tab cross-update, kill-backend reconnect banner, page-focus refetch network trace, mobile real-device update. C5 adds: confirm the language toggle flips strings immediately in each app without reload, and confirm the mobile toggle persists across app restart (SecureStore round-trip).
 
@@ -69,11 +89,11 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 (Waiter UX Critical Path) is the next code work.** Awaiting Sebastian's explicit approval. Begin with §8 Phase 1 (lock data contracts: endpoints, payloads, performance budgets) as a single commit, then Phase 2 (shared infrastructure components) one commit per piece. The §5a Socket.IO contract (already implemented) is the freshness layer C6's UI subscribes to.
+**C6 Phase 2 (shared infrastructure components) is the next code work.** Awaiting Sebastian's explicit approval. Per waiter_ux_strategy.md §8 Phase 2: global toast/notification provider (used by 3.5 undo + 3.6 pending alert), Socket.IO client handler audit (mostly done in C4, confirm reconnect+refetch matches §4.4), shared ReservationDetailPopup component (§3.1), shared ActionButton with subtext support (§3.11), reusable QuickAddReservation modal (§3.2/§3.3), "Reconnecting…" banner audit (already shipped in C4 — confirm visual matches Cowork QA expectations). One commit per shared component.
 
 **Resume sequence (in order):**
-1. Sebastian gives explicit approval to begin Tier C6 Phase 1.
-2. C6 (phased) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian gives explicit approval to begin C6 Phase 2.
+2. C6 Phase 2 → Phase 3 (per-flow features, fastest-first) → Phase 4 (per-commit viewport verification) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.
