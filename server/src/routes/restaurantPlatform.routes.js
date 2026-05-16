@@ -1570,11 +1570,20 @@ router.get('/layout/live', authenticateRestaurant, async (req, res, next) => {
         if (minutes > 120) hasAlert = true;
       }
 
+      // C6 post-QA fix-the-fix: the popup's actionsForStatus needs
+      // status + tableId + seatedAt to derive the AwaitingGuest action
+      // set when reservation.status === CONFIRMED / AUTO_CONFIRMED and
+      // the table has flipped to AWAITING_GUEST. Without these fields
+      // the popup falls back to switch's default → "No actions
+      // available" regression on /dashboard/live.
       const summarize = (r) => r && {
         id: r.id,
         guestName: r.guestName || [r.user?.firstName, r.user?.lastName].filter(Boolean).join(' ') || null,
         partySize: r.partySize,
         time: r.time,
+        status: r.status,
+        tableId: r.tableId || null,
+        seatedAt: r.seatedAt,
         hasSpecialRequests: !!(r.specialRequests && r.specialRequests.trim()),
       };
 
@@ -1641,6 +1650,7 @@ router.get('/dashboard/summary', authenticateRestaurant, async (req, res, next) 
       },
       select: {
         id: true,
+        tableId: true, // C6 post-QA fix-the-fix — needed by isAwaitingGuestDerived
         time: true,
         endTime: true,
         partySize: true,
@@ -1660,12 +1670,18 @@ router.get('/dashboard/summary', authenticateRestaurant, async (req, res, next) 
       const minsLate = (nh * 60 + nm) - (rh * 60 + rm);
       let secondsLate = null;
       if (!r.seatedAt && minsLate > 0) secondsLate = minsLate * 60;
+      // C6 post-QA fix-the-fix: include tableId + seatedAt so the
+      // popup's isAwaitingGuestDerived helper has the fields it needs.
+      // Pre-fix the Dashboard path silently failed condition 2 (tableId)
+      // and 3 (seatedAt) even though secondsLate was correct.
       return {
         id: r.id,
         guestName: r.guestName || [r.user?.firstName, r.user?.lastName].filter(Boolean).join(' ') || null,
         partySize: r.partySize,
         time: r.time,
         status: r.status,
+        tableId: r.tableId || null,
+        seatedAt: r.seatedAt,
         // tableNumber already carries the "T" prefix (e.g. "T5") per
         // commit 5eabdc0; don't double-prepend in the summary payload.
         tableLabel: r.table ? r.table.tableNumber : null,

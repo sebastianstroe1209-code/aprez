@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 COMPLETE + two end-of-phase QA fixes shipped (derived-AwaitingGuest action set + [unassigned] label) — all 9 Phase 3 items implemented; Cowork shift simulation caught two issues, both fixed in a single follow-up commit. C6 is ready for sign-off and cleanup of the seeded fixture. Next: Cowork re-verifies the no-show button now appears for Smith Family + [unassigned] label visible on Daniel Vlad → approves C6 close → cleanup of fixture rows → Tier D+E+F+I parallel block unblocks.**
+**Last session: 2026-05-16. Tier C6 Phase 3 COMPLETE + derived-AwaitingGuest fix-the-fix shipped. Cowork re-verification caught that commit 0fccea2 was incomplete: (A) `/dashboard/summary` shape didn't carry `tableId`/`seatedAt` so derived never fired on the Dashboard path, and (B) `/layout/live`'s reservation summary stripped `status`/`tableId`/`seatedAt` so the Live popup hit the switch's `default → []` for Smith Family — regression. Fixed by extending both endpoint shapes + extracting the helpers into `lib/popupActions.js` (single source of truth, consumed by both popup and Node smoke) + hardening `hasAssignedTable` to also treat `tableLabel` as a "table assigned" signal. The Node smoke at `.smoke/c6-popup-actions-test.js` runs 12 assertions across 6 scenarios (Smith via Live, Smith via Dashboard, Smith via Dashboard with legacy tableLabel-only payload, Daniel no-table, Florin not-late, Seated guard, Pending sanity) — 12/12 pass. C6 ready for sign-off + fixture cleanup.**
 
 ## Where we left off
 
@@ -48,7 +48,31 @@ type: project
 
 ## What's pending — Phase 3 COMPLETE + post-QA fixes shipped; C6 sign-off + fixture cleanup is next
 
-**C6 end-of-phase QA fixes shipped this session.** Two findings from Cowork's shift simulation, both fixed in one targeted commit:
+**C6 derived-AwaitingGuest fix-the-fix shipped this session.** Commit 0fccea2 added `isAwaitingGuestDerived` but two paths silently failed in practice:
+- **Dashboard path**: `/dashboard/summary`'s `shape()` returned `tableLabel` but not `tableId` or `seatedAt`, so `hasTable` was false and derived never fired. Fixed by adding both fields to the response shape + the `select`.
+- **Live path REGRESSION**: `/layout/live`'s `summarize()` returned only `{id, guestName, partySize, time, hasSpecialRequests}` — no `status`. The popup got `status=undefined` and hit the switch's `default: return []` → "No actions available". Fixed by extending the summary to include `status`, `tableId`, `seatedAt`.
+
+Refactor: extracted `isAwaitingGuestDerived` + `actionsForStatus` + `hasAssignedTable` into `apps/restaurant/lib/popupActions.js` (CJS module, framework-free). The popup imports it; `server/.smoke/c6-popup-actions-test.js` imports the same file — no copy-paste divergence between popup logic and the smoke. Hardened `hasAssignedTable` to accept `tableLabel` as a fallback signal (defensive against legacy/partial payloads).
+
+Smoke results (Node runner, 12 assertions across 6 scenarios, 12/12 pass):
+- A. Smith via Live (table.status=AWAITING_GUEST) → [seat,noshow,edit,cancel] ✓
+- B. Smith via Dashboard summary (tableId + seatedAt + secondsLate) → [seat,noshow,edit,cancel] ✓
+- B'. Smith via Dashboard legacy (no tableId, tableLabel only) → [seat,noshow,edit,cancel] ✓ (hardened fallback)
+- C. Daniel (no tableId) → [edit,pickTable,cancel] ✓ (no Seat/No-show — no table)
+- D. Florin future (table FREE, not late) → [edit,reassignTable,cancel] ✓ (no Seat/No-show)
+- E. Seated guard (seatedAt set + table.AWAITING_GUEST) → derived=false ✓
+- F. Pending sanity → [confirm,reject,edit,cancel] ✓
+
+Direct fetch verification:
+- `/api/restaurant/dashboard/summary` activeReservations[0] keys now include `tableId, seatedAt` — confirmed via curl.
+- `/api/restaurant/layout/live` currentReservation keys now include `status, tableId, seatedAt` — confirmed via curl.
+- Smith Family via both endpoints → `derived=true`, `actions=[seat, noshow, edit, cancel]`.
+
+C4 §5a 7/7 ✓. C1 dispatcher 12/12 ✓. New + changed files: zero hardcoded English UI strings (helper is pure JS, no UI strings).
+
+**Fixture still seeded.** After Cowork confirms Smith Family popup now works from both Dashboard + Live, run `cd server && node .smoke/c6-shift-fixture.js --cleanup`.
+
+(Earlier this session) **Two findings from the first Cowork QA pass**, fixed in commit 0fccea2:
 
 1. **Derived AwaitingGuest action set** — the popup's `actionsForStatus` previously only rendered Seat + No-show when `reservation.status === 'AWAITING_GUEST'`, which never happens in practice (ReservationStatus enum has no AWAITING_GUEST — that's only a table status per SPEC §9.1). New `isAwaitingGuestDerived` helper triggers the set when: `status ∈ {CONFIRMED, AUTO_CONFIRMED}` AND `tableId` set AND `!seatedAt` AND (`table.status === 'AWAITING_GUEST'` OR `secondsLate > 0`). Live + Calendar pages now pass `table.status` into the popup; Dashboard already passes `secondsLate` from summary. The `'AWAITING_GUEST'` case in the switch is kept as defensive code with a comment.
 2. **[unassigned] label** — `reservations.unassignedTable` i18n key added (`[unassigned]` / `[fără masă]`). Rendered in Dashboard NOW + NEXT zone rows when `tableLabel` is missing; Reservations page row already had an English hardcoded version, converted to use the same key for consistency.

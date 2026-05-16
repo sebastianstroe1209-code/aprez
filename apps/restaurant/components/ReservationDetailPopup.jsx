@@ -35,6 +35,10 @@ import { useToast } from './ui/ToastProvider'
 import ActionButton from './ui/ActionButton'
 import SpecialRequestsBadge from './ui/SpecialRequestsBadge'
 import MinLateBadge from './ui/MinLateBadge'
+// Pure framework-free helpers (CJS module). Extracted so the same logic
+// is consumed by the Node smoke at server/.smoke/c6-popup-actions-test.js —
+// single source of truth, no copy-paste divergence.
+import { actionsForStatus } from '../lib/popupActions'
 
 function isWithinAnyServicePeriod(profile, time) {
   const periods = profile?.servicePeriods || []
@@ -53,72 +57,7 @@ function isoDateOnly(d) {
   return s.slice(0, 10)
 }
 
-// State→actions matrix per §3.1.
-//
-// "AwaitingGuest" in the matrix is a DERIVED state, not a literal
-// reservation status — ReservationStatus has no AWAITING_GUEST enum
-// (that's only a table status per SPEC §9.1). In practice the
-// reservation row is CONFIRMED / AUTO_CONFIRMED and the *table* flips
-// to AWAITING_GUEST when its reservation time arrives without a seat.
-// We surface Seat + No-show whenever the derived state is true so the
-// waiter never has to navigate elsewhere to mark a no-show.
-//
-// Derived inputs:
-//   - reservation.status ∈ CONFIRMED / AUTO_CONFIRMED
-//   - reservation.tableId is set (no point seating without a table)
-//   - reservation.seatedAt is null (the guest hasn't sat down yet)
-//   - AND either:
-//       * reservation.table.status === 'AWAITING_GUEST'   (Live/Calendar paths)
-//       * reservation.secondsLate > 0                     (Dashboard summary path)
-//
-// Different mount surfaces carry one or the other; either is enough.
-function isAwaitingGuestDerived(reservation) {
-  if (!reservation) return false
-  const status = reservation.status
-  if (status !== 'CONFIRMED' && status !== 'AUTO_CONFIRMED') return false
-  if (reservation.seatedAt) return false
-  const hasTable = !!(reservation.tableId || reservation.table?.id)
-  if (!hasTable) return false
-  if (reservation.table?.status === 'AWAITING_GUEST') return true
-  if (typeof reservation.secondsLate === 'number' && reservation.secondsLate > 0) return true
-  return false
-}
-
-function actionsForStatus(reservation) {
-  const status = reservation?.status
-  const hasTable = !!(reservation?.tableId || reservation?.table?.id)
-  const awaitingDerived = isAwaitingGuestDerived(reservation)
-  switch (status) {
-    case 'PENDING':
-      return ['confirm', 'reject', 'edit', 'cancel']
-    case 'CONFIRMED':
-    case 'AUTO_CONFIRMED':
-      if (awaitingDerived) {
-        // Derived AwaitingGuest — Seat + No-show alongside the usual
-        // Edit + Cancel. Reassign isn't offered here; the next action
-        // a waiter wants is either "they're here, sit them" or "no-show".
-        return ['seat', 'noshow', 'edit', 'cancel']
-      }
-      return hasTable
-        ? ['edit', 'reassignTable', 'cancel']
-        : ['edit', 'pickTable', 'cancel']
-    case 'AWAITING_GUEST':
-      // Defensive: ReservationStatus enum has no AWAITING_GUEST, but if
-      // any code path ever supplies it (test fixture, future migration)
-      // we still render the right action set.
-      return ['seat', 'noshow', 'edit', 'cancel']
-    case 'OCCUPIED':
-      return ['complete', 'cancel']
-    case 'COMPLETED':
-    case 'CANCELLED':
-    case 'NO_SHOW':
-      return [] // view-only
-    case 'MODIFICATION_PENDING':
-      return [] // Tier D
-    default:
-      return []
-  }
-}
+// State→actions matrix per §3.1 lives in lib/popupActions.js (above import).
 
 function guestNameOf(r) {
   if (!r) return ''
