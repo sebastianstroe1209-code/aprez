@@ -11,10 +11,12 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Colors } from '../lib/colors';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginScreen({ navigation }) {
+  const { t } = useTranslation();
   const { login, error, setError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -104,6 +106,16 @@ export default function LoginScreen({ navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={styles.forgotBtn}
+            onPress={() => {
+              setError(null);
+              navigation.navigate('ForgotPassword');
+            }}
+          >
+            <Text style={styles.forgotText}>{t('login.forgotLink')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.linkBtn}
             onPress={() => {
               setError(null);
@@ -169,6 +181,8 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  forgotBtn: { alignItems: 'center', marginTop: 16 },
+  forgotText: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
   linkBtn: { alignItems: 'center', marginTop: 20 },
   linkText: { fontSize: 15, color: Colors.textSecondary },
   linkBold: { color: Colors.primary, fontWeight: '600' },

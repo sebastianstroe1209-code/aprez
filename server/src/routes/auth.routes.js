@@ -10,6 +10,15 @@ const router = express.Router();
 // Reset-link target. Override via env when deploying behind a real domain.
 const RESTAURANT_FRONTEND_URL = process.env.RESTAURANT_FRONTEND_URL || 'http://localhost:3001';
 
+// Diner reset link — primarily a custom-scheme deep link into the Expo app
+// (aprez://reset-password?token=...), with an optional web fallback for
+// the case where the diner taps the email on a device without the app
+// installed. The web fallback is empty by default (no public diner web
+// app exists in MVP); leaving it blank means the email lists the
+// `aprez://` link only with a "open from your phone" hint.
+const DINER_APP_SCHEME = process.env.DINER_APP_SCHEME || 'aprez';
+const DINER_WEB_FALLBACK_URL = process.env.DINER_WEB_FALLBACK_URL || '';
+
 // SPEC §3.3 / §6.8: reset link valid for 1 hour, single-use.
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
@@ -347,6 +356,147 @@ router.post('/restaurant/reset-password', [
     // mid-flight crash can't leave the token usable.
     await prisma.$transaction([
       prisma.restaurantStaff.update({
+        where: { id: row.userId },
+        data: { passwordHash },
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: row.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    res.json({ message: 'Password updated. You can now log in.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// DINER FORGOT-PASSWORD (Tier D commit 2, SPEC §3.3)
+// Same shape as the restaurant flow but addressed to User.email and
+// delivered via an aprez:// deep link rather than a web URL. Neutral 200
+// regardless of whether the email exists. We skip the send if the matched
+// user has no password set (i.e. registered phone-only) or is soft-deleted.
+// ============================================
+router.post('/diner/forgot-password', [
+  body('email').trim().notEmpty().withMessage('Email is required').isEmail().withMessage('Invalid email'),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: { message: errors.array()[0].msg } });
+    }
+    const prisma = req.app.get('prisma');
+    const email = req.body.email.toLowerCase();
+
+    const neutralResponse = {
+      message: 'If an account exists, we have sent a reset link to that email.',
+    };
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, firstName: true, email: true, passwordHash: true, deletedAt: true, preferredLanguage: true },
+    });
+
+    // Bail with the neutral response if: not found, soft-deleted, or
+    // phone-only (no passwordHash to reset). Match wire-shape exactly.
+    if (!user || user.deletedAt || !user.passwordHash) {
+      return res.json(neutralResponse);
+    }
+
+    // Invalidate any prior outstanding tokens for this diner so only the
+    // freshly-issued link works.
+    await prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, userType: 'user', usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const token = generateResetToken();
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        userType: 'user',
+        token,
+        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    const deepLink = `${DINER_APP_SCHEME}://reset-password?token=${encodeURIComponent(token)}`;
+    const webLink = DINER_WEB_FALLBACK_URL
+      ? `${DINER_WEB_FALLBACK_URL.replace(/\/+$/, '')}/reset-password?token=${encodeURIComponent(token)}`
+      : null;
+    const greeting = user.firstName || 'there';
+
+    await sendEmail(prisma, null, {
+      to: user.email,
+      subject: 'Reset your ApRez password',
+      text:
+        `Hi ${greeting},\n\n` +
+        `A password reset was requested for your ApRez account.\n\n` +
+        `Open this link on your phone to set a new password (valid for 1 hour, single-use):\n` +
+        `${deepLink}\n\n` +
+        (webLink ? `If the link above doesn't open the app, try the web link:\n${webLink}\n\n` : '') +
+        `If you didn't request this, you can safely ignore this email — your password won't change.\n\n` +
+        `— ApRez`,
+      html:
+        `<p>Hi ${greeting},</p>` +
+        `<p>A password reset was requested for your ApRez account.</p>` +
+        `<p><a href="${deepLink}" style="display:inline-block;padding:10px 16px;background:#22c55e;color:#fff;border-radius:6px;text-decoration:none;font-weight:600">Reset your password</a></p>` +
+        `<p>Open this link on your phone to set a new password (valid for 1 hour, single-use). If it doesn't open the app:</p>` +
+        `<p><code>${deepLink}</code></p>` +
+        (webLink ? `<p>Web fallback: <a href="${webLink}">${webLink}</a></p>` : '') +
+        `<p>If you didn't request this, you can safely ignore this email — your password won't change.</p>` +
+        `<p>— ApRez</p>`,
+    });
+
+    res.json(neutralResponse);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// DINER RESET-PASSWORD (Tier D commit 2)
+// Mirror of the restaurant-side endpoint, scoped to userType='user' so a
+// staff token can't be redeemed via the diner endpoint and vice versa.
+// ============================================
+router.post('/diner/reset-password', [
+  body('token').trim().notEmpty().withMessage('Token is required'),
+  body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: { message: errors.array()[0].msg } });
+    }
+    const prisma = req.app.get('prisma');
+    const { token, newPassword } = req.body;
+
+    const row = await prisma.passwordResetToken.findUnique({ where: { token } });
+    if (!row || row.userType !== 'user') {
+      return res.status(400).json({ error: { code: 'invalid-token', message: 'Invalid or unknown reset token.' } });
+    }
+    if (row.usedAt) {
+      return res.status(400).json({ error: { code: 'token-used', message: 'This reset link has already been used.' } });
+    }
+    if (row.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ error: { code: 'token-expired', message: 'This reset link has expired. Request a new one.' } });
+    }
+
+    // Belt-and-braces: if the target diner was deleted between request and
+    // redemption, treat the token as invalid rather than 500ing on a
+    // foreign-key write to a missing/soft-deleted row.
+    const user = await prisma.user.findUnique({
+      where: { id: row.userId },
+      select: { id: true, deletedAt: true },
+    });
+    if (!user || user.deletedAt) {
+      return res.status(400).json({ error: { code: 'invalid-token', message: 'Invalid or unknown reset token.' } });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await prisma.$transaction([
+      prisma.user.update({
         where: { id: row.userId },
         data: { passwordHash },
       }),

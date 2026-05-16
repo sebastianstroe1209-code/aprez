@@ -22,5 +22,64 @@
     "title": "Profile",
     "languageSectionTitle": "Language",
     "languageSectionHint": "App and notifications language."
+  },
+  "login": {
+    "forgotLink": "Forgot password?"
+  },
+  "forgot": {
+    "title": "Forgot password",
+    "subtitle": "Enter the email on your ApRez account. We'll send you a reset link.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "your@email.com",
+    "submit": "Send reset link",
+    "submitting": "Sending…",
+    "success": "If an account exists, we've sent a reset link to that email. Open it on your phone to set a new password.",
+    "backToLogin": "Back to login",
+    "errorMissingEmail": "Enter your email.",
+    "errorGeneric": "Couldn't send the reset link. Try again."
+  },
+  "reset": {
+    "title": "Set a new password",
+    "subtitle": "Pick a new password for your ApRez account.",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "submit": "Update password",
+    "submitting": "Updating…",
+    "success": "Password updated. Returning you to the login screen…",
+    "errorMinLength": "Password must be at least 6 characters.",
+    "errorMismatch": "Passwords don't match.",
+    "errorMissingToken": "This screen needs a token. Open the link from your reset email on this phone.",
+    "errorInvalidToken": "This reset link is invalid.",
+    "errorTokenExpired": "This reset link has expired. Request a new one.",
+    "errorTokenUsed": "This reset link has already been used.",
+    "errorGeneric": "Couldn't reset password. Try again."
+  },
+  "deleteAccount": {
+    "sectionTitle": "Delete account",
+    "sectionHint": "Permanently delete your ApRez account and remove your personal details.",
+    "button": "Delete my account",
+    "confirmTitle": "Delete account?",
+    "confirmBody": "This permanently deletes your account. Your reservation history stays with the restaurants you booked, but your name and contact details will be removed and this cannot be undone.",
+    "confirmAction": "Delete forever",
+    "cancel": "Cancel",
+    "deleting": "Deleting…",
+    "errorGeneric": "Couldn't delete your account. Try again."
+  },
+  "phonePrompt": {
+    "headline": "Add a phone number?",
+    "body": "The restaurant may need to reach you if anything changes with your reservation. You can add this later from your profile.",
+    "placeholder": "+40 7XX XXX XXX",
+    "errorFormat": "Phone must be in the format +40 followed by 9 digits.",
+    "addButton": "Add phone",
+    "skipButton": "Maybe later",
+    "saving": "Saving…"
+  },
+  "bookConfirm": {
+    "successTitle": "Reservation confirmed!",
+    "successTitlePending": "Reservation submitted",
+    "successBodyConfirmed": "You're all set. We've sent the details to your email.",
+    "successBodyPending": "Your reservation is pending confirmation from the restaurant. You'll hear back soon.",
+    "viewReservations": "View my reservations",
+    "done": "Done"
   }
 }

@@ -22,5 +22,64 @@
     "title": "Profil",
     "languageSectionTitle": "Limbă",
     "languageSectionHint": "Limba aplicației și a notificărilor."
+  },
+  "login": {
+    "forgotLink": "Ai uitat parola?"
+  },
+  "forgot": {
+    "title": "Ai uitat parola",
+    "subtitle": "Introdu adresa de email a contului tău ApRez. Îți trimitem un link de resetare.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "email@exemplu.com",
+    "submit": "Trimite link-ul",
+    "submitting": "Se trimite…",
+    "success": "Dacă există un cont, am trimis un link de resetare la acea adresă. Deschide-l pe telefon pentru a seta o parolă nouă.",
+    "backToLogin": "Înapoi la autentificare",
+    "errorMissingEmail": "Introdu adresa de email.",
+    "errorGeneric": "Nu am putut trimite link-ul. Încearcă din nou."
+  },
+  "reset": {
+    "title": "Setează o parolă nouă",
+    "subtitle": "Alege o parolă nouă pentru contul tău ApRez.",
+    "newPassword": "Parola nouă",
+    "confirmPassword": "Confirmă parola nouă",
+    "submit": "Salvează parola",
+    "submitting": "Se salvează…",
+    "success": "Parola a fost actualizată. Te ducem înapoi la autentificare…",
+    "errorMinLength": "Parola trebuie să aibă cel puțin 6 caractere.",
+    "errorMismatch": "Parolele nu se potrivesc.",
+    "errorMissingToken": "Acest ecran are nevoie de un token. Deschide link-ul din email pe acest telefon.",
+    "errorInvalidToken": "Acest link de resetare nu este valid.",
+    "errorTokenExpired": "Acest link de resetare a expirat. Cere unul nou.",
+    "errorTokenUsed": "Acest link de resetare a fost deja folosit.",
+    "errorGeneric": "Nu am putut reseta parola. Încearcă din nou."
+  },
+  "deleteAccount": {
+    "sectionTitle": "Șterge contul",
+    "sectionHint": "Șterge definitiv contul ApRez și datele tale personale.",
+    "button": "Șterge contul meu",
+    "confirmTitle": "Ștergi contul?",
+    "confirmBody": "Această acțiune îți șterge definitiv contul. Istoricul rezervărilor rămâne la restaurantele unde ai fost, dar numele și datele tale de contact vor fi eliminate. Această acțiune nu poate fi anulată.",
+    "confirmAction": "Șterge definitiv",
+    "cancel": "Anulează",
+    "deleting": "Se șterge…",
+    "errorGeneric": "Nu am putut șterge contul. Încearcă din nou."
+  },
+  "phonePrompt": {
+    "headline": "Adaugi un număr de telefon?",
+    "body": "Restaurantul poate avea nevoie să te contacteze dacă apar modificări la rezervare. Îl poți adăuga oricând mai târziu din profil.",
+    "placeholder": "+40 7XX XXX XXX",
+    "errorFormat": "Telefonul trebuie să fie în formatul +40 urmat de 9 cifre.",
+    "addButton": "Adaugă telefonul",
+    "skipButton": "Poate mai târziu",
+    "saving": "Se salvează…"
+  },
+  "bookConfirm": {
+    "successTitle": "Rezervare confirmată!",
+    "successTitlePending": "Rezervare trimisă",
+    "successBodyConfirmed": "Totul e în regulă. Ți-am trimis detaliile pe email.",
+    "successBodyPending": "Rezervarea ta așteaptă confirmarea restaurantului. Vei primi un răspuns în curând.",
+    "viewReservations": "Vezi rezervările mele",
+    "done": "Gata"
   }
 }

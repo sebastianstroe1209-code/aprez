@@ -4,6 +4,7 @@
     "slug": "aprez",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "aprez",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {

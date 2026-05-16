@@ -11,12 +11,33 @@ import { useAuth } from '../contexts/AuthContext';
 // Screens
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import HomeScreen from '../screens/HomeScreen';
 import RestaurantDetailScreen from '../screens/RestaurantDetailScreen';
 import BookReservationScreen from '../screens/BookReservationScreen';
 import ReservationsScreen from '../screens/ReservationsScreen';
 import FavoritesScreen from '../screens/FavoritesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+
+// Tier D commit 2 — Expo Linking config. The deep link aprez://reset-password?token=…
+// arrives in the email sent by /api/auth/diner/forgot-password. When the
+// app handles it React Navigation injects the token into ResetPassword's
+// route.params automatically. Note: the linking config only routes WITHIN
+// the AuthStack — once the diner is logged in the deep link is ignored
+// because ResetPassword is registered there. This matches the spec: reset
+// only happens from the logged-out state.
+const linking = {
+  prefixes: ['aprez://'],
+  config: {
+    screens: {
+      Login: 'login',
+      Register: 'register',
+      ForgotPassword: 'forgot-password',
+      ResetPassword: 'reset-password',
+    },
+  },
+};
 
 const AuthStackNav = createNativeStackNavigator();
 const AppStackNav = createNativeStackNavigator();
@@ -89,6 +110,8 @@ function AuthStack() {
     <AuthStackNav.Navigator screenOptions={{ headerShown: false }}>
       <AuthStackNav.Screen name="Login" component={LoginScreen} />
       <AuthStackNav.Screen name="Register" component={RegisterScreen} />
+      <AuthStackNav.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <AuthStackNav.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </AuthStackNav.Navigator>
   );
 }
@@ -127,7 +150,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       {user ? <AppStack /> : <AuthStack />}
     </NavigationContainer>
   );

@@ -31,6 +31,7 @@ router.get('/me', authenticateUser, async (req, res, next) => {
         longitude: true,
         preferredLanguage: true,
         expoPushToken: true,
+        phonePromptSeenAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -191,5 +192,96 @@ router.put(
     }
   }
 );
+
+// POST /me/phone-prompt-seen — Tier D commit 2. Stamps phonePromptSeenAt
+// so the post-first-reservation phone prompt doesn't reappear (whether the
+// diner submitted a phone or tapped "Maybe later"). Idempotent.
+router.post('/me/phone-prompt-seen', authenticateUser, async (req, res, next) => {
+  try {
+    const prisma = req.app.get('prisma');
+    const userId = req.user.id;
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { phonePromptSeenAt: new Date() },
+      select: { id: true, phonePromptSeenAt: true },
+    });
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /me — GDPR §5.9 account deletion. Soft-deletes the User row
+// (sets deletedAt; auth middleware then rejects any outstanding JWTs) and
+// anonymizes PII on historical reservations so the restaurant-side audit
+// trail stays intact without identifying the diner. We do NOT cascade-
+// delete reservations: bookings already honored matter for the restaurant
+// billing report and the diner's old confirmation emails reference them.
+router.delete('/me', authenticateUser, async (req, res, next) => {
+  try {
+    const prisma = req.app.get('prisma');
+    const userId = req.user.id;
+
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, firstName: true, lastName: true, deletedAt: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: { message: 'User not found' } });
+    }
+    if (existing.deletedAt) {
+      // Idempotent: a second DELETE on an already-deleted account is a
+      // no-op rather than an error so a duplicate tap doesn't 500.
+      return res.json({ message: 'Account already deleted.' });
+    }
+
+    const displayName = `${existing.firstName || ''} ${existing.lastName || ''}`.trim() || '[deleted account]';
+
+    // PII wipe on reservations: replace guest contact fields with neutral
+    // sentinels so the restaurant's view shows "[deleted account]" rather
+    // than an empty cell. Match the convention used elsewhere when staff
+    // anonymize cancelled walk-ins.
+    await prisma.$transaction([
+      prisma.reservation.updateMany({
+        where: { userId },
+        data: {
+          guestName: '[deleted account]',
+          guestPhone: null,
+          guestEmail: null,
+        },
+      }),
+      // Soft-delete: keep the row so FKs from Reservation/Favorite/etc.
+      // don't break, but null-out PII and stamp deletedAt. The unique
+      // (email, phone) indexes still hold the original values — we null
+      // them so the diner can re-register with the same email later.
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          deletedAt: new Date(),
+          email: null,
+          phone: null,
+          passwordHash: null,
+          expoPushToken: null,
+          latitude: null,
+          longitude: null,
+          firstName: '[deleted',
+          lastName: 'account]',
+        },
+      }),
+      // Drop favorites — they hold no PII but they're personal preference
+      // data and shouldn't survive deletion.
+      prisma.favorite.deleteMany({ where: { userId } }),
+      // Invalidate any outstanding password-reset tokens for this user.
+      prisma.passwordResetToken.updateMany({
+        where: { userId, userType: 'user', usedAt: null },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    res.json({ message: 'Account deleted.', deletedDisplayName: displayName });
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = router;

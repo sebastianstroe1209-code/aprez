@@ -17,6 +17,24 @@ const authenticate = (requiredRole = null) => {
         return res.status(403).json({ error: { message: 'Insufficient permissions' } });
       }
 
+      // GDPR §5.9 — diner JWTs become invalid the moment the user soft-
+      // deletes the account via DELETE /api/users/me. The DB lookup is
+      // scoped to role='user' so restaurant/admin requests stay zero-cost.
+      // Token-invalidation matters here because JWTs are valid for 7 days;
+      // without this check a stolen token would survive deletion.
+      if (decoded.role === 'user') {
+        const prisma = req.app.get('prisma');
+        if (prisma) {
+          const user = await prisma.user.findUnique({
+            where: { id: decoded.id },
+            select: { deletedAt: true },
+          });
+          if (!user || user.deletedAt) {
+            return res.status(401).json({ error: { code: 'account-deleted', message: 'Account no longer exists.' } });
+          }
+        }
+      }
+
       req.user = decoded;
       next();
     } catch (error) {

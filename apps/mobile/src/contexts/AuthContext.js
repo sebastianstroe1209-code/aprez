@@ -87,8 +87,43 @@ export function AuthProvider({ children }) {
   const updateProfile = async (data) => {
     try {
       setError(null);
-      const res = await api.put('/users/profile', data);
+      // Pre-D2 this called `/users/profile` which doesn't exist on the
+      // server (404). The real endpoint is `/users/me` — fix bundled with
+      // Tier D commit 2 because the new phone-collection prompt needs the
+      // same path to add a phone post-booking.
+      const res = await api.put('/users/me', data);
+      setUser((prev) => ({ ...(prev || {}), ...res.data }));
+      return true;
+    } catch (e) {
+      setError(getErrorMessage(e));
+      return false;
+    }
+  };
+
+  // Re-pull /users/me into the context after a server-side change made
+  // outside the AuthContext (e.g. inline phone-prompt PUT). Cheaper than
+  // duplicating field-merge logic in every caller.
+  const refreshUser = async () => {
+    try {
+      const res = await api.get('/users/me');
       setUser(res.data);
+      return res.data;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // GDPR §5.9 — wired in Tier D commit 2. The server soft-deletes + sets
+  // deletedAt, after which any further request with this token returns 401
+  // 'account-deleted'. We clear local state immediately so the UI bounces
+  // to the auth stack without waiting for the next 401.
+  const deleteAccount = async () => {
+    try {
+      setError(null);
+      await api.delete('/users/me');
+      await SecureStore.deleteItemAsync('userToken').catch(() => {});
+      resetSocket();
+      setUser(null);
       return true;
     } catch (e) {
       setError(getErrorMessage(e));
@@ -107,6 +142,8 @@ export function AuthProvider({ children }) {
         register,
         logout,
         updateProfile,
+        refreshUser,
+        deleteAccount,
         checkAuth,
       }}
     >

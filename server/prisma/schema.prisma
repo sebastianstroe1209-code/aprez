@@ -31,6 +31,16 @@ model User {
   // explicit --accept-data-loss approval is given.
   fcmToken         String?   @map("fcm_token")
   expoPushToken    String?   @map("expo_push_token")
+  // Set by DELETE /api/users/me (GDPR §5.9). Auth middleware rejects
+  // any diner JWT whose user has deletedAt set, invalidating outstanding
+  // tokens. The row itself is kept (soft-delete) so reservation history
+  // for the restaurant side stays referentially intact with PII fields
+  // wiped to "[deleted account]" / nulls.
+  deletedAt        DateTime? @map("deleted_at")
+  // Set when the post-first-reservation phone-collection prompt has
+  // been shown + dismissed or submitted (SPEC §3.1 post-MVP note +
+  // §10 caveat). Prevents the prompt re-firing on every reservation.
+  phonePromptSeenAt DateTime? @map("phone_prompt_seen_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 

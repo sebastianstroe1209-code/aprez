@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   SafeAreaView,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -18,7 +19,29 @@ import { setLocale as setI18nLocale, getCurrentLocale } from '../lib/i18n';
 
 export default function ProfileScreen() {
   const { t, i18n } = useTranslation();
-  const { user, logout, updateProfile, error, setError } = useAuth();
+  const { user, logout, updateProfile, deleteAccount, error, setError } = useAuth();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDelete = async () => {
+    if (deleting) return;
+    setDeleteError('');
+    setDeleting(true);
+    const ok = await deleteAccount();
+    setDeleting(false);
+    if (!ok) {
+      // AuthContext doesn't clear user on failure — keep the modal open
+      // and surface a generic error. (Server-side errors here are rare:
+      // the only path is a 401, which the middleware returns after a
+      // prior deletion — in which case "account already gone" is fine.)
+      setDeleteError(t('deleteAccount.errorGeneric'));
+      return;
+    }
+    // On success the AuthContext sets user=null and AppNavigator bounces
+    // to the AuthStack automatically. No explicit navigation needed; the
+    // modal unmounts with the screen.
+  };
   const currentLocale = i18n.language || getCurrentLocale();
   const [editing, setEditing] = useState(false);
   const [firstName, setFirstName] = useState(user?.firstName || '');
@@ -214,8 +237,65 @@ export default function ProfileScreen() {
         <Text style={styles.logoutText}>Log Out</Text>
       </TouchableOpacity>
 
+      {/* Danger zone — GDPR §5.9 account deletion. */}
+      <View style={styles.dangerCard}>
+        <Text style={styles.dangerTitle}>{t('deleteAccount.sectionTitle')}</Text>
+        <Text style={styles.dangerHint}>{t('deleteAccount.sectionHint')}</Text>
+        <TouchableOpacity
+          style={styles.dangerBtn}
+          onPress={() => {
+            setDeleteError('');
+            setShowDeleteModal(true);
+          }}
+        >
+          <Ionicons name="trash-outline" size={18} color={Colors.error} />
+          <Text style={styles.dangerBtnText}>{t('deleteAccount.button')}</Text>
+        </TouchableOpacity>
+      </View>
+
       <Text style={styles.version}>ApRez v1.0.0</Text>
     </ScrollView>
+
+    {/* Account-deletion confirmation modal. */}
+    <Modal
+      visible={showDeleteModal}
+      animationType="fade"
+      transparent
+      onRequestClose={() => { if (!deleting) setShowDeleteModal(false); }}
+    >
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIconWrap}>
+            <Ionicons name="warning-outline" size={28} color={Colors.error} />
+          </View>
+          <Text style={styles.modalTitle}>{t('deleteAccount.confirmTitle')}</Text>
+          <Text style={styles.modalBody}>{t('deleteAccount.confirmBody')}</Text>
+          {deleteError ? (
+            <Text style={styles.modalError}>{deleteError}</Text>
+          ) : null}
+          <View style={styles.modalBtnRow}>
+            <TouchableOpacity
+              style={[styles.modalCancelBtn, deleting && { opacity: 0.5 }]}
+              onPress={() => { if (!deleting) setShowDeleteModal(false); }}
+              disabled={deleting}
+            >
+              <Text style={styles.modalCancelText}>{t('deleteAccount.cancel')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalDeleteBtn, deleting && { opacity: 0.7 }]}
+              onPress={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.modalDeleteText}>{t('deleteAccount.confirmAction')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
     </SafeAreaView>
   );
 }
@@ -300,4 +380,72 @@ const styles = StyleSheet.create({
   },
   logoutText: { fontSize: 16, fontWeight: '600', color: Colors.error },
   version: { textAlign: 'center', fontSize: 13, color: Colors.textLight, marginTop: 20 },
+  // Danger zone
+  dangerCard: {
+    marginTop: 24,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.errorBg,
+    backgroundColor: Colors.surface,
+  },
+  dangerTitle: { fontSize: 15, fontWeight: '700', color: Colors.error, marginBottom: 4 },
+  dangerHint: { fontSize: 13, color: Colors.textSecondary, marginBottom: 12, lineHeight: 18 },
+  dangerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  dangerBtnText: { fontSize: 14, fontWeight: '600', color: Colors.error },
+  // Modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+  },
+  modalIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.errorBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.text, marginBottom: 8, textAlign: 'center' },
+  modalBody: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  modalError: { fontSize: 13, color: Colors.error, marginBottom: 12, textAlign: 'center' },
+  modalBtnRow: { flexDirection: 'row', gap: 10, width: '100%' },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: Colors.text },
+  modalDeleteBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.error,
+    alignItems: 'center',
+  },
+  modalDeleteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

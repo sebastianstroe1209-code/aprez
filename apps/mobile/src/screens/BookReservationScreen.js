@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -10,8 +11,10 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Colors } from '../lib/colors';
 import api, { getErrorMessage } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 
 function generateDates(count = 14) {
   const dates = [];
@@ -44,6 +47,8 @@ function formatDateLabel(d) {
 export default function BookReservationScreen({ route, navigation }) {
   const { restaurant } = route.params;
   const r = restaurant;
+  const { t } = useTranslation();
+  const { user, refreshUser } = useAuth();
 
   const dates = useMemo(() => generateDates(14), []);
 
@@ -51,10 +56,72 @@ export default function BookReservationScreen({ route, navigation }) {
   const [selectedTime, setSelectedTime] = useState(null);
   const [partySize, setPartySize] = useState(2);
   const [submitting, setSubmitting] = useState(false);
-  const [step, setStep] = useState(1); // 1=date, 2=time, 3=confirm
+  // Step 4 is the post-booking confirmation (D2). Earlier this was an
+  // Alert.alert; we promoted it to a real screen step so the optional
+  // phone-collection prompt can render inline below the success message
+  // for users whose User.phone is null.
+  const [step, setStep] = useState(1); // 1=date, 2=time, 3=confirm, 4=success
+  const [bookedStatus, setBookedStatus] = useState(null);
   const [timeSlots, setTimeSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotsError, setSlotsError] = useState('');
+
+  // Phone prompt local state. Lives in this screen rather than in
+  // AuthContext because it's scoped to this single confirmation.
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phonePromptError, setPhonePromptError] = useState('');
+  const [phonePromptSaving, setPhonePromptSaving] = useState(false);
+  const [phonePromptDismissed, setPhonePromptDismissed] = useState(false);
+
+  // Phone prompt shows when: booking succeeded, user has no phone on
+  // file, the server-side phonePromptSeenAt is null (so this is the
+  // first qualifying reservation), and they haven't tapped Skip/Save
+  // within this confirmation already.
+  const shouldShowPhonePrompt =
+    step === 4 &&
+    !!user &&
+    !user.phone &&
+    !user.phonePromptSeenAt &&
+    !phonePromptDismissed;
+
+  // POST the dismissal up to the server so the prompt doesn't re-appear
+  // after the user closes and re-opens the app. Fire-and-forget; we
+  // tolerate a network failure here because the local dismissedFlag
+  // already hides the prompt for this session.
+  const stampPromptDismissed = useCallback(async () => {
+    try {
+      await api.post('/users/me/phone-prompt-seen');
+      refreshUser?.();
+    } catch (_) {
+      /* silent — local state already dismissed */
+    }
+  }, [refreshUser]);
+
+  const handleSkipPhone = () => {
+    setPhonePromptDismissed(true);
+    stampPromptDismissed();
+  };
+
+  const handleSavePhone = async () => {
+    if (phonePromptSaving) return;
+    const trimmed = phoneInput.trim();
+    if (!/^\+40\d{9}$/.test(trimmed)) {
+      setPhonePromptError(t('phonePrompt.errorFormat'));
+      return;
+    }
+    setPhonePromptError('');
+    setPhonePromptSaving(true);
+    try {
+      await api.put('/users/me', { phone: trimmed });
+      setPhonePromptDismissed(true);
+      stampPromptDismissed();
+      refreshUser?.();
+    } catch (e) {
+      setPhonePromptError(getErrorMessage(e) || t('phonePrompt.errorFormat'));
+    } finally {
+      setPhonePromptSaving(false);
+    }
+  };
 
   // Fetch available time slots from server when date or party size changes
   const fetchTimeSlots = useCallback(async () => {
@@ -102,25 +169,18 @@ export default function BookReservationScreen({ route, navigation }) {
         partySize,
       });
 
-      const status = res.data.status;
-      const statusMessage =
-        status === 'CONFIRMED' || status === 'AUTO_CONFIRMED'
-          ? 'Your reservation has been confirmed!'
-          : 'Your reservation is pending confirmation from the restaurant.';
-
-      Alert.alert('Reservation Created!', statusMessage, [
-        {
-          text: 'View My Reservations',
-          onPress: () => navigation.navigate('MainTabs', { screen: 'Reservations' }),
-        },
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      // Promote to inline step 4 instead of an Alert so the optional
+      // phone-collection prompt can render inside the same screen.
+      setBookedStatus(res.data.status);
+      setStep(4);
     } catch (e) {
       Alert.alert('Booking Failed', getErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
   };
+
+  const isConfirmed = bookedStatus === 'CONFIRMED' || bookedStatus === 'AUTO_CONFIRMED';
 
   return (
     <View style={styles.container}>
@@ -135,19 +195,22 @@ export default function BookReservationScreen({ route, navigation }) {
         </View>
       </View>
 
-      {/* Progress */}
-      <View style={styles.progressRow}>
-        {[1, 2, 3].map((s) => (
-          <View key={s} style={styles.progressItem}>
-            <View style={[styles.progressDot, step >= s && styles.progressDotActive]}>
-              <Text style={[styles.progressNum, step >= s && styles.progressNumActive]}>{s}</Text>
+      {/* Progress — hidden on step 4 (the success view) since the flow
+          has ended. */}
+      {step !== 4 && (
+        <View style={styles.progressRow}>
+          {[1, 2, 3].map((s) => (
+            <View key={s} style={styles.progressItem}>
+              <View style={[styles.progressDot, step >= s && styles.progressDotActive]}>
+                <Text style={[styles.progressNum, step >= s && styles.progressNumActive]}>{s}</Text>
+              </View>
+              <Text style={[styles.progressLabel, step >= s && styles.progressLabelActive]}>
+                {s === 1 ? 'Date & Guests' : s === 2 ? 'Time' : 'Confirm'}
+              </Text>
             </View>
-            <Text style={[styles.progressLabel, step >= s && styles.progressLabelActive]}>
-              {s === 1 ? 'Date & Guests' : s === 2 ? 'Time' : 'Confirm'}
-            </Text>
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+      )}
 
       <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
         {/* Step 1: Date & Party Size */}
@@ -326,6 +389,82 @@ export default function BookReservationScreen({ route, navigation }) {
             </View>
           </View>
         )}
+
+        {/* Step 4: Success + optional phone-collection prompt */}
+        {step === 4 && (
+          <View>
+            <View style={styles.successHero}>
+              <View style={styles.successIcon}>
+                <Ionicons name="checkmark-circle" size={56} color={Colors.primary} />
+              </View>
+              <Text style={styles.successTitle}>
+                {isConfirmed ? t('bookConfirm.successTitle') : t('bookConfirm.successTitlePending')}
+              </Text>
+              <Text style={styles.successBody}>
+                {isConfirmed ? t('bookConfirm.successBodyConfirmed') : t('bookConfirm.successBodyPending')}
+              </Text>
+            </View>
+
+            {shouldShowPhonePrompt && (
+              <View style={styles.phonePromptCard}>
+                <View style={styles.phonePromptHeader}>
+                  <Ionicons name="call-outline" size={20} color={Colors.primary} />
+                  <Text style={styles.phonePromptTitle}>{t('phonePrompt.headline')}</Text>
+                </View>
+                <Text style={styles.phonePromptBody}>{t('phonePrompt.body')}</Text>
+                <TextInput
+                  style={styles.phonePromptInput}
+                  value={phoneInput}
+                  onChangeText={setPhoneInput}
+                  placeholder={t('phonePrompt.placeholder')}
+                  placeholderTextColor={Colors.textLight}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                  editable={!phonePromptSaving}
+                />
+                {phonePromptError ? (
+                  <Text style={styles.phonePromptErrorText}>{phonePromptError}</Text>
+                ) : null}
+                <View style={styles.phonePromptBtnRow}>
+                  <TouchableOpacity
+                    style={[styles.phoneSkipBtn, phonePromptSaving && { opacity: 0.5 }]}
+                    onPress={handleSkipPhone}
+                    disabled={phonePromptSaving}
+                  >
+                    <Text style={styles.phoneSkipText}>{t('phonePrompt.skipButton')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.phoneSaveBtn, (phonePromptSaving || !phoneInput.trim()) && { opacity: 0.5 }]}
+                    onPress={handleSavePhone}
+                    disabled={phonePromptSaving || !phoneInput.trim()}
+                  >
+                    {phonePromptSaving ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.phoneSaveText}>{t('phonePrompt.addButton')}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            <View style={[styles.stepButtons, { marginTop: 24 }]}>
+              <TouchableOpacity
+                style={[styles.confirmButton, { flex: 1 }]}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'Reservations' })}
+              >
+                <Ionicons name="calendar" size={18} color="#fff" />
+                <Text style={styles.confirmButtonText}>{t('bookConfirm.viewReservations')}</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.doneBtn}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.doneBtnText}>{t('bookConfirm.done')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -463,4 +602,52 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  // Step 4 — success + phone prompt
+  successHero: { alignItems: 'center', paddingTop: 8, paddingBottom: 20 },
+  successIcon: { marginBottom: 12 },
+  successTitle: { fontSize: 22, fontWeight: '800', color: Colors.text, marginBottom: 6, textAlign: 'center' },
+  successBody: { fontSize: 15, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, paddingHorizontal: 12 },
+  phonePromptCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: 8,
+  },
+  phonePromptHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  phonePromptTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  phonePromptBody: { fontSize: 13, color: Colors.textSecondary, marginBottom: 12, lineHeight: 18 },
+  phonePromptInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: Colors.text,
+    backgroundColor: Colors.background,
+  },
+  phonePromptErrorText: { color: Colors.error, fontSize: 13, marginTop: 8 },
+  phonePromptBtnRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  phoneSkipBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  phoneSkipText: { fontSize: 14, fontWeight: '600', color: Colors.text },
+  phoneSaveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phoneSaveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  doneBtn: { alignItems: 'center', paddingVertical: 14, marginBottom: 32 },
+  doneBtnText: { fontSize: 15, fontWeight: '600', color: Colors.textSecondary },
 });
