@@ -14,6 +14,22 @@ function addMinutes(timeStr, minutes) {
   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
 }
 
+// Tier E commit 2 — minute-of-day range check for opening hours that
+// handles cross-midnight close times. closeTime '00:00' represents
+// midnight at the END of the service day (effectively 24:00); without
+// this normalization a 20:00 reservation at La Mama (open 10:00 →
+// 00:00 Saturday) would 400 because raw 0 < 1200. The same parser
+// bug existed in POST /reservations until E2 — both call sites use
+// this helper now so they don't drift.
+function timeMinutesFitsOpenWindow(timeStr, openTimeStr, closeTimeStr) {
+  const toMin = (s) => parseInt(s.split(':')[0]) * 60 + parseInt(s.split(':')[1]);
+  const req = toMin(timeStr);
+  const openStart = toMin(openTimeStr);
+  let openEnd = toMin(closeTimeStr);
+  if (openEnd <= openStart) openEnd += 24 * 60; // cross-midnight (e.g. 10:00 → 00:00 = 24:00)
+  return req >= openStart && req <= openEnd;
+}
+
 // Middleware to check validation results
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
@@ -87,15 +103,15 @@ router.post(
         return res.status(400).json({ error: 'The restaurant is closed on this day' });
       }
 
-      // Check time is within opening hours
-      const openStart = parseInt(openingHour.openTime.split(':')[0]) * 60 + parseInt(openingHour.openTime.split(':')[1]);
-      const openEnd = parseInt(openingHour.closeTime.split(':')[0]) * 60 + parseInt(openingHour.closeTime.split(':')[1]);
-      const [reqH, reqM] = time.split(':').map(Number);
-      const reqMin = reqH * 60 + reqM;
-
-      if (reqMin < openStart || reqMin > openEnd) {
+      // Check time is within opening hours. Cross-midnight close
+      // (e.g. closeTime='00:00' meaning 24:00) handled by the shared
+      // helper above — pre-Tier-E this raw parser rejected late-night
+      // slots at any restaurant that closes at midnight.
+      if (!timeMinutesFitsOpenWindow(time, openingHour.openTime, openingHour.closeTime)) {
         return res.status(400).json({ error: `Reservations are only available between ${openingHour.openTime} and ${openingHour.closeTime}` });
       }
+      const [reqH, reqM] = time.split(':').map(Number);
+      const reqMin = reqH * 60 + reqM;
 
       // Check disabled dates
       const disabledDate = await prisma.disabledDate.findFirst({
@@ -302,11 +318,42 @@ router.get('/mine', authenticateUser, async (req, res, next) => {
             address: true,
           },
         },
+        // Tier E commit 2 — surface modification lifecycle on each row
+        // so the mobile ReservationsScreen can render the inline reject
+        // banner without a separate fetch. Reshaped below into the same
+        // {modificationPending, modificationRejected} envelope the
+        // restaurant-side list uses.
+        modifications: {
+          where: {
+            OR: [
+              { status: 'PENDING' },
+              { status: 'REJECTED', acknowledgedAt: null },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            requestedDate: true,
+            requestedTime: true,
+            requestedPartySize: true,
+            status: true,
+            resolvedAt: true,
+            acknowledgedAt: true,
+            createdAt: true,
+          },
+        },
       },
       orderBy: { date: 'desc' },
     });
 
-    res.json({ reservations });
+    const shaped = reservations.map((r) => {
+      const { modifications, ...rest } = r;
+      const pending = (modifications || []).find((m) => m.status === 'PENDING') || null;
+      const rejected = (modifications || []).find((m) => m.status === 'REJECTED' && !m.acknowledgedAt) || null;
+      return { ...rest, modificationPending: pending, modificationRejected: rejected };
+    });
+
+    res.json({ reservations: shaped });
   } catch (error) {
     next(error);
   }
@@ -348,15 +395,29 @@ router.get(
             },
           },
           modifications: {
+            // Tier E commit 2 — return only modifications that the
+            // diner detail screen needs to render: the pending one (if
+            // any) and the latest unacknowledged rejection. APPROVED
+            // mods don't surface in UI; they're audit-only.
+            where: {
+              OR: [
+                { status: 'PENDING' },
+                { status: 'REJECTED', acknowledgedAt: null },
+              ],
+            },
+            orderBy: { createdAt: 'desc' },
             select: {
               id: true,
               requestedDate: true,
               requestedTime: true,
               requestedPartySize: true,
               status: true,
+              resolvedAt: true,
+              acknowledgedAt: true,
               createdAt: true,
             },
           },
+          specialRequests: true,
         },
       });
 
@@ -364,7 +425,13 @@ router.get(
         return res.status(404).json({ error: 'Reservation not found' });
       }
 
-      res.json(reservation);
+      // Reshape into the same envelope the /mine endpoint uses so the
+      // mobile detail screen + the list share one parsing path.
+      const { modifications, ...rest } = reservation;
+      const pending = (modifications || []).find((m) => m.status === 'PENDING') || null;
+      const rejected = (modifications || []).find((m) => m.status === 'REJECTED' && !m.acknowledgedAt) || null;
+
+      res.json({ ...rest, modificationPending: pending, modificationRejected: rejected });
     } catch (error) {
       next(error);
     }
@@ -501,7 +568,58 @@ router.post(
         });
       }
 
-      // (2) One pending modification at a time per reservation.
+      // Tier E commit 2 — feasibility checks on the *effective* post-
+      // modification state (requested fields fall back to the current
+      // reservation values). Mirrors the same guards that POST
+      // /reservations enforces so a diner can't sneak an unbookable
+      // date/time through the modify path. All three return 400 with a
+      // stable error.code so the mobile UI can surface localized copy.
+      const effectiveDateIso = reqDateIso || curDateIso;
+      const effectiveTime = requestedTime || reservation.time;
+
+      // 3a) Effective date can't be in the past (Bucharest day).
+      const todayBucharest = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
+      if (effectiveDateIso < todayBucharest) {
+        return res.status(400).json({
+          error: { code: 'date-in-past', message: 'Requested date is in the past.' },
+        });
+      }
+
+      // 3b) Effective date can't be on the restaurant's DisabledDate list.
+      const effectiveDateObj = new Date(`${effectiveDateIso}T00:00:00.000Z`);
+      const disabled = await prisma.disabledDate.findFirst({
+        where: { restaurantId: reservation.restaurantId, date: effectiveDateObj },
+      });
+      if (disabled) {
+        return res.status(400).json({
+          error: { code: 'date-not-available', message: 'Restaurant is not taking reservations on that date.' },
+        });
+      }
+
+      // 3c) Effective time must fall inside the restaurant's opening
+      // hours for the effective date's weekday. Mirrors the POST
+      // /reservations check at line 73-97 above — same schemaDayOfWeek
+      // mapping (0=Mon..6=Sun) and same minute-of-day comparison.
+      const jsDay = effectiveDateObj.getUTCDay(); // 0=Sun
+      const schemaDayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+      const openingHour = await prisma.openingHours.findFirst({
+        where: { restaurantId: reservation.restaurantId, dayOfWeek: schemaDayOfWeek, isOpen: true },
+      });
+      if (!openingHour) {
+        return res.status(400).json({
+          error: { code: 'time-outside-hours', message: 'Restaurant is closed on that day.' },
+        });
+      }
+      if (!timeMinutesFitsOpenWindow(effectiveTime, openingHour.openTime, openingHour.closeTime)) {
+        return res.status(400).json({
+          error: { code: 'time-outside-hours', message: `Time must be between ${openingHour.openTime} and ${openingHour.closeTime}.` },
+        });
+      }
+
+      // (2) One pending modification at a time per reservation. The
+      // E2 ack endpoint clears the way after the diner Keeps/Cancels a
+      // rejected modification (acknowledgedAt set), so this only blocks
+      // truly-unresolved requests.
       const existingPending = await prisma.reservationModification.findFirst({
         where: { reservationId: id, status: 'PENDING' },
         select: { id: true },
@@ -564,6 +682,127 @@ router.post(
       });
 
       res.status(201).json(modification);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/modifications/:modId/ack — Tier E commit 2 (SPEC §5.6
+// "keep original OR cancel after rejection"). Diner-side acknowledgement
+// of a REJECTED modification. Two paths:
+//   - action='keep':   stamp acknowledgedAt; reservation untouched.
+//   - action='cancel': stamp acknowledgedAt AND mirror the existing
+//     diner cancel path (status=CANCELLED, cancelledBy='user',
+//     RESERVATION_CANCELLED_BY_DINER + reservation:cancelled emit).
+// Both paths emit reservation:updated with modificationRejected:null so
+// the banner clears across the diner's other devices.
+router.post(
+  '/:id/modifications/:modId/ack',
+  authenticateUser,
+  [
+    param('id').isUUID(),
+    param('modId').isUUID(),
+    body('action').isIn(['keep', 'cancel']).withMessage('action must be "keep" or "cancel"'),
+  ],
+  async (req, res, next) => {
+    // Validation handled manually so we can return a structured error.code
+    // alongside the express-validator default shape.
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: { code: 'invalid-action', message: errors.array()[0].msg } });
+    }
+    try {
+      const prisma = req.app.get('prisma');
+      const userId = req.user.id;
+      const { id, modId } = req.params;
+      const { action } = req.body;
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id },
+        select: { id: true, userId: true, restaurantId: true, status: true, date: true, time: true },
+      });
+      if (!reservation) {
+        return res.status(404).json({ error: { code: 'reservation-not-found', message: 'Reservation not found.' } });
+      }
+      // 403 (not 404) when the row exists but belongs to a different
+      // diner — leaks slightly less than 404-for-everyone and matches
+      // the access-control convention used by other diner routes.
+      if (reservation.userId !== userId) {
+        return res.status(403).json({ error: { code: 'forbidden', message: 'Not your reservation.' } });
+      }
+
+      const modification = await prisma.reservationModification.findUnique({
+        where: { id: modId },
+      });
+      if (!modification || modification.reservationId !== id) {
+        return res.status(404).json({ error: { code: 'modification-not-found', message: 'Modification not found.' } });
+      }
+      if (modification.status !== 'REJECTED') {
+        return res.status(400).json({ error: { code: 'modification-not-rejected', message: 'Only rejected modifications can be acknowledged.' } });
+      }
+      if (modification.acknowledgedAt) {
+        return res.status(400).json({ error: { code: 'modification-already-acknowledged', message: 'This rejection has already been acknowledged.' } });
+      }
+
+      const now = new Date();
+      const io = req.app.get('io');
+
+      if (action === 'keep') {
+        const updatedMod = await prisma.reservationModification.update({
+          where: { id: modId },
+          data: { acknowledgedAt: now },
+        });
+        // Clear the banner across all the diner's open sessions.
+        io.emitToUser(userId, 'reservation:updated', {
+          id: reservation.id,
+          restaurantId: reservation.restaurantId,
+          userId,
+          modificationRejected: null,
+        });
+        return res.json({ acknowledgedAt: updatedMod.acknowledgedAt, reservation: null });
+      }
+
+      // action === 'cancel' — mirror the PUT /:id/cancel handler above
+      // (line 374-426) field-for-field so the resulting state matches
+      // what a "regular" diner cancel would have produced. Both writes
+      // happen in a $transaction so a crash mid-flight can't leave the
+      // mod acknowledged on a still-active reservation.
+      const [, cancelled] = await prisma.$transaction([
+        prisma.reservationModification.update({
+          where: { id: modId },
+          data: { acknowledgedAt: now },
+        }),
+        prisma.reservation.update({
+          where: { id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: now,
+            cancelledBy: 'user',
+          },
+          select: { id: true, status: true, cancelledAt: true, cancelledBy: true },
+        }),
+      ]);
+
+      dispatchAsync(prisma, io, {
+        event: EVENTS.RESERVATION_CANCELLED_BY_DINER,
+        restaurantId: reservation.restaurantId,
+        userId,
+        date: reservation.date,
+        time: reservation.time,
+      });
+
+      const cancelPayload = {
+        id,
+        restaurantId: reservation.restaurantId,
+        userId,
+        cancelledBy: 'user',
+        ...cancelled,
+      };
+      io.emitToRestaurant(reservation.restaurantId, 'reservation:cancelled', cancelPayload);
+      io.emitToUser(userId, 'reservation:cancelled', cancelPayload);
+
+      res.json({ acknowledgedAt: now, reservation: cancelled });
     } catch (error) {
       next(error);
     }

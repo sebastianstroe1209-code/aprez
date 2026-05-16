@@ -81,5 +81,57 @@
     "successBodyPending": "Your reservation is pending confirmation from the restaurant. You'll hear back soon.",
     "viewReservations": "View my reservations",
     "done": "Done"
+  },
+  "reservationDetail": {
+    "title": "Reservation details",
+    "statusLabel": "Status",
+    "dateLabel": "Date",
+    "timeLabel": "Time",
+    "partyLabel": "Guests",
+    "tableLabel": "Table",
+    "unassignedTable": "Not yet assigned",
+    "specialRequests": "Special requests",
+    "requestChange": "Request a change",
+    "cancelReservation": "Cancel reservation",
+    "cancelConfirmTitle": "Cancel reservation?",
+    "cancelConfirmBody": "This can't be undone. The restaurant will be notified.",
+    "cancelling": "Cancelling…",
+    "loadError": "Couldn't load this reservation.",
+    "pendingModNote": "You have a pending change request. The restaurant will respond soon."
+  },
+  "modify": {
+    "title": "Request a change",
+    "subtitle": "Change date, time, or party size. The restaurant will confirm or decline.",
+    "dateField": "New date",
+    "timeField": "New time",
+    "partyField": "New party size",
+    "currentLabel": "Current: {value}",
+    "submitButton": "Send request",
+    "disabledSubmit": "Change at least one field",
+    "sendingState": "Sending request…",
+    "pendingTitle": "Request sent",
+    "pendingBody": "We've sent your change request to the restaurant. You'll get a notification when they respond.",
+    "pendingDone": "Done"
+  },
+  "modRejected": {
+    "bannerTitle": "Restaurant declined your change.",
+    "bannerSub": "Keep this reservation or cancel?",
+    "keepButton": "Keep",
+    "cancelButton": "Cancel",
+    "cancelConfirmTitle": "Cancel reservation?",
+    "cancelConfirmBody": "This permanently cancels the original reservation. The restaurant will be notified.",
+    "cancelling": "Cancelling…",
+    "kept": "Reservation kept.",
+    "cancelled": "Reservation cancelled.",
+    "errorGeneric": "Couldn't update. Try again."
+  },
+  "errors": {
+    "modificationAlreadyPending": "You already have a pending change request on this reservation.",
+    "noOpModification": "Please change at least one field.",
+    "reservationNotModifiable": "This reservation can't be changed.",
+    "dateNotAvailable": "Date isn't available at this restaurant.",
+    "dateInPast": "Date is in the past.",
+    "timeOutsideHours": "Time isn't within the restaurant's opening hours.",
+    "generic": "Something went wrong. Try again."
   }
 }

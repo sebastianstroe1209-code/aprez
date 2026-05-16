@@ -81,5 +81,57 @@
     "successBodyPending": "Rezervarea ta așteaptă confirmarea restaurantului. Vei primi un răspuns în curând.",
     "viewReservations": "Vezi rezervările mele",
     "done": "Gata"
+  },
+  "reservationDetail": {
+    "title": "Detalii rezervare",
+    "statusLabel": "Stare",
+    "dateLabel": "Data",
+    "timeLabel": "Ora",
+    "partyLabel": "Persoane",
+    "tableLabel": "Masă",
+    "unassignedTable": "Neatribuită încă",
+    "specialRequests": "Cerințe speciale",
+    "requestChange": "Solicită o modificare",
+    "cancelReservation": "Anulează rezervarea",
+    "cancelConfirmTitle": "Anulezi rezervarea?",
+    "cancelConfirmBody": "Această acțiune nu poate fi anulată. Restaurantul va fi notificat.",
+    "cancelling": "Se anulează…",
+    "loadError": "Nu am putut încărca rezervarea.",
+    "pendingModNote": "Ai o cerere de modificare în așteptare. Restaurantul va răspunde în curând."
+  },
+  "modify": {
+    "title": "Solicită o modificare",
+    "subtitle": "Modifică data, ora sau numărul de persoane. Restaurantul va confirma sau respinge.",
+    "dateField": "Data nouă",
+    "timeField": "Ora nouă",
+    "partyField": "Persoane noi",
+    "currentLabel": "Curent: {value}",
+    "submitButton": "Trimite cererea",
+    "disabledSubmit": "Modifică cel puțin un câmp",
+    "sendingState": "Se trimite cererea…",
+    "pendingTitle": "Cerere trimisă",
+    "pendingBody": "Am trimis cererea ta restaurantului. Vei primi o notificare când vor răspunde.",
+    "pendingDone": "Gata"
+  },
+  "modRejected": {
+    "bannerTitle": "Restaurantul a respins modificarea.",
+    "bannerSub": "Păstrezi rezervarea sau o anulezi?",
+    "keepButton": "Păstrează",
+    "cancelButton": "Anulează",
+    "cancelConfirmTitle": "Anulezi rezervarea?",
+    "cancelConfirmBody": "Această acțiune anulează definitiv rezervarea inițială. Restaurantul va fi notificat.",
+    "cancelling": "Se anulează…",
+    "kept": "Rezervare păstrată.",
+    "cancelled": "Rezervare anulată.",
+    "errorGeneric": "Nu am putut actualiza. Încearcă din nou."
+  },
+  "errors": {
+    "modificationAlreadyPending": "Ai deja o cerere de modificare în așteptare pentru această rezervare.",
+    "noOpModification": "Modifică cel puțin un câmp.",
+    "reservationNotModifiable": "Această rezervare nu poate fi modificată.",
+    "dateNotAvailable": "Data nu este disponibilă la acest restaurant.",
+    "dateInPast": "Data este în trecut.",
+    "timeOutsideHours": "Ora nu se încadrează în programul restaurantului.",
+    "generic": "A apărut o eroare. Încearcă din nou."
   }
 }

@@ -17,6 +17,8 @@ import HomeScreen from '../screens/HomeScreen';
 import RestaurantDetailScreen from '../screens/RestaurantDetailScreen';
 import BookReservationScreen from '../screens/BookReservationScreen';
 import ReservationsScreen from '../screens/ReservationsScreen';
+import ReservationDetailScreen from '../screens/ReservationDetailScreen';
+import RequestChangeScreen from '../screens/RequestChangeScreen';
 import FavoritesScreen from '../screens/FavoritesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 
@@ -132,6 +134,17 @@ function AppStack() {
       <AppStackNav.Screen
         name="BookReservation"
         component={BookReservationScreen}
+        options={{ headerShown: false }}
+      />
+      {/* Tier E commit 2 — per-reservation detail + modification request. */}
+      <AppStackNav.Screen
+        name="ReservationDetail"
+        component={ReservationDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <AppStackNav.Screen
+        name="RequestChange"
+        component={RequestChangeScreen}
         options={{ headerShown: false }}
       />
     </AppStackNav.Navigator>
