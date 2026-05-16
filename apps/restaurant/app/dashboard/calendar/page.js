@@ -56,12 +56,17 @@ export default function CalendarPage() {
     return () => unsubs.forEach((fn) => fn())
   }, [selectedDate])
 
-  const refetchOnReconnect = useCallback(() => { loadData() }, [selectedDate, activeSection])
+  const refetchOnReconnect = useCallback(() => { loadData(true) }, [selectedDate, activeSection])
   useSocketRefetch(refetchOnReconnect)
 
-  const loadData = async () => {
+  // `quiet=true` skips the setLoading(true) toggle so background refetches
+  // (socket reconnect / visibilitychange) don't trip the early-return at
+  // the top of the render, which would unmount any open block-detail popup
+  // mid-click. Initial-mount calls leave quiet=false so the "Loading…"
+  // placeholder still shows on first paint.
+  const loadData = async (quiet = false) => {
     try {
-      setLoading(true)
+      if (!quiet) setLoading(true)
       const [layoutData, resData] = await Promise.all([
         apiGet('/api/restaurant/layout'),
         apiGet(`/api/restaurant/reservations?date=${selectedDate}`),
@@ -74,7 +79,7 @@ export default function CalendarPage() {
     } catch (err) {
       setError(err.message || 'Failed to load calendar')
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }
 

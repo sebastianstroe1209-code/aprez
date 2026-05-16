@@ -80,12 +80,17 @@ export default function ReservationsPage() {
     return () => unsubs.forEach((fn) => fn())
   }, [tab])
 
-  const refetchOnReconnect = useCallback(() => { loadReservations() }, [tab])
+  const refetchOnReconnect = useCallback(() => { loadReservations(true) }, [tab])
   useSocketRefetch(refetchOnReconnect)
 
-  const loadReservations = async () => {
+  // `quiet=true` skips the setLoading(true) toggle so background refetches
+  // (socket reconnect / visibilitychange) don't trip the early-return at
+  // the top of the render, which would unmount any open modal mid-click.
+  // Initial-mount calls leave quiet=false so the "Loading…" placeholder
+  // still shows on first paint.
+  const loadReservations = async (quiet = false) => {
     try {
-      setLoading(true)
+      if (!quiet) setLoading(true)
       let data = []
 
       if (tab === 'pending') {
@@ -102,7 +107,7 @@ export default function ReservationsPage() {
     } catch (err) {
       setError(err.message || 'Failed to load reservations')
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }
 

@@ -71,7 +71,7 @@ export default function LiveFloorPlanPage() {
     return () => unsubs.forEach((fn) => fn())
   }, [])
 
-  const refetchOnReconnect = useCallback(() => { loadLayout() }, [])
+  const refetchOnReconnect = useCallback(() => { loadLayout(true) }, [])
   useSocketRefetch(refetchOnReconnect)
 
   useEffect(() => {
@@ -113,7 +113,12 @@ export default function LiveFloorPlanPage() {
     }
   }
 
-  const loadLayout = async () => {
+  // `quiet=true` skips touching the `loading` flag so background refetches
+  // (socket reconnect / visibilitychange / 30s tick) don't risk re-tripping
+  // the early-return at the top of the render and unmounting the open
+  // status/seat modal. Live currently doesn't setLoading(true) up top, so
+  // the guard is also defensive against future regressions.
+  const loadLayout = async (quiet = false) => {
     try {
       const data = await apiGet('/api/restaurant/layout')
       setSections(data)
@@ -125,7 +130,7 @@ export default function LiveFloorPlanPage() {
     } catch (err) {
       setError(err.message || 'Failed to load floor plan')
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }
 
