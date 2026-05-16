@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 COMPLETE + derived-AwaitingGuest fix-the-fix shipped. Cowork re-verification caught that commit 0fccea2 was incomplete: (A) `/dashboard/summary` shape didn't carry `tableId`/`seatedAt` so derived never fired on the Dashboard path, and (B) `/layout/live`'s reservation summary stripped `status`/`tableId`/`seatedAt` so the Live popup hit the switch's `default → []` for Smith Family — regression. Fixed by extending both endpoint shapes + extracting the helpers into `lib/popupActions.js` (single source of truth, consumed by both popup and Node smoke) + hardening `hasAssignedTable` to also treat `tableLabel` as a "table assigned" signal. The Node smoke at `.smoke/c6-popup-actions-test.js` runs 12 assertions across 6 scenarios (Smith via Live, Smith via Dashboard, Smith via Dashboard with legacy tableLabel-only payload, Daniel no-table, Florin not-late, Seated guard, Pending sanity) — 12/12 pass. C6 ready for sign-off + fixture cleanup.**
+**Last session: 2026-05-16. TIER C6 LOCKED AS COMPLETE.** All 9 Phase 3 items + 2 fix-the-fix commits (the derived-AwaitingGuest hardening) verified by Cowork's end-of-C6 shift QA on the seeded fixture. Derived-AwaitingGuest path works from Dashboard, Live, and Calendar popup mounts. Shift fixture cleaned up post-QA — 21 reservations + 1 TableActivity deleted, 7 touched tables restored to pre-fixture status. **Next: Tier D + E + F + I parallel block per `memory/waiter_ux_strategy.md` §6 tier order, gated on Sebastian picking the order or approving all-parallel.**
 
 ## Where we left off
 
@@ -46,7 +46,34 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 COMPLETE + post-QA fixes shipped; C6 sign-off + fixture cleanup is next
+## What's pending — TIER C6 LOCKED AS COMPLETE; Tier D + E + F + I parallel block is next
+
+**C6 closure (2026-05-16):**
+- All 9 Phase 3 items shipped + Cowork-verified.
+- 2 post-QA fix-the-fix commits shipped:
+  - `0fccea2` — derived-AwaitingGuest action set + [unassigned] label.
+  - `a2846a0` — extended `/dashboard/summary` + `/layout/live` payloads with `tableId`/`seatedAt`/`status`; extracted helpers to `lib/popupActions.js` (single source of truth shared with the Node smoke at `.smoke/c6-popup-actions-test.js`, 12/12 assertions pass); hardened `hasAssignedTable` to accept `tableLabel` as a fallback signal.
+- Shift fixture (`server/.smoke/c6-shift-fixture-ids.json` manifest) cleaned up — 21 reservations + 1 TableActivity deleted, 7 touched tables restored. IDs file removed.
+
+**Tier D + E + F + I parallel block — scope per `memory/waiter_ux_strategy.md` §6:**
+- **Tier D — Auth completion**: forgot-password reset for staff + diner (SPEC §3.3 + §6.8); account deletion §5.9 GDPR (diner-side); phone collection prompt after first reservation if not yet provided (SPEC §3.1 post-MVP idea, may stay deferred).
+- **Tier E — Reservation features**: modification flow on both mobile and restaurant per SPEC §5.6; must be consistent with C6 popup's `MODIFICATION_PENDING` row (currently view-only / "Tier D scope" marker — needs revisit since modification ships in Tier E not D, the inline marker is a labeling artifact from earlier planning).
+- **Tier F — Admin uploads**: photos + menu PDF + reservation-disabled days + custom grid dimensions per SPEC §7.1 / §7.2; admin tool only.
+- **Tier I — Table moving / combining**: drag-merge UI per SPEC §8.2, kept compatible with C6 Live overlay layout per §3.4 edge-cases rule (card height ≥80px preserved for drag handles).
+
+**Dependency map (proposed):**
+- D and F are fully independent of each other and of C6 — they touch auth + admin respectively, no shared surfaces.
+- E touches the C6 popup (state-action matrix needs Approve/Reject row for MODIFICATION_PENDING) — should ship after the popup has had Cowork QA settling time.
+- I modifies the Live page layout — should ship last in the block so any Live regression is isolated to one commit.
+
+**Suggested order (Sebastian to approve or override):**
+1. **D + F in parallel** — fully decoupled, can start immediately.
+2. **E** — after D+F land OR in parallel with them if Sebastian has bandwidth; needs popup updates.
+3. **I** — last in the block; biggest regression risk to the just-stabilized Live overlay.
+
+Or **all-four-in-parallel** if Sebastian wants the speed and accepts the merge-conflict risk on the popup (E) and Live page (I).
+
+
 
 **C6 derived-AwaitingGuest fix-the-fix shipped this session.** Commit 0fccea2 added `isAwaitingGuestDerived` but two paths silently failed in practice:
 - **Dashboard path**: `/dashboard/summary`'s `shape()` returned `tableLabel` but not `tableId` or `seatedAt`, so `hasTable` was false and derived never fired. Fixed by adding both fields to the response shape + the `select`.
@@ -377,15 +404,10 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**Next: C6 end-of-phase shift simulation (Phase 5 per memory/waiter_ux_strategy.md §8).** Cowork will drive a seeded test restaurant through a full waiter shift scenario per §8 Phase 5 — 20 reservations today (mixed statuses, special requests), 5 pending, 3 special requests, 2 late arrivals (one >15 min), 1 no-show, 1 OOS table, 1 walk-in already logged, 1 overlapping reservation conflict. Then exercise each §2 scenario from the strategy doc: pre-shift Dashboard scan, phone-in via Quick Add from each page (target <10s), app reservation alert + confirm, walk-in fast seating, mark no-show + undo, edit existing reservation, status updates from Live, socket update visible from another tab. If anything feels slower than a notebook, the relevant commit gets revisited before C6 is declared done.
-
-Cowork will request a seeded fixture dataset before driving the shift QA. After Cowork pass, C6 is done and Tier D + E + F + I parallel block unblocks.
-
 **Resume sequence (in order):**
-1. Sebastian requests the seeded-fixture dataset for the end-of-C6 shift simulation.
-2. Cowork drives the simulation against `/dashboard`, `/live`, `/reservations`, `/calendar` at 375/768/1440 viewports.
-3. Any issues caught → small targeted commits.
-4. Cowork declares C6 done → Tier D + E + F + I parallel block (per `memory/waiter_ux_strategy.md` §6 tier order) → G + H → J.
+1. Sebastian picks the Tier order (D+F parallel → E → I, OR all-four-parallel, OR a custom sequence).
+2. For each Tier picked, Sebastian approves the next item before it starts (per the established per-item gate).
+3. After D + E + F + I → G + H → J → MVP launch readiness.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.
