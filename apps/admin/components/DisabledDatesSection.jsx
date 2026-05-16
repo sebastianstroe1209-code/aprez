@@ -44,8 +44,7 @@ export default function DisabledDatesSection({ restaurantId }) {
 
   useEffect(() => { refresh() }, [restaurantId])
 
-  const handleAdd = async (e) => {
-    e.preventDefault()
+  const handleAdd = async () => {
     if (saving || !date) return
     setError('')
     setSaving(true)
@@ -65,6 +64,21 @@ export default function DisabledDatesSection({ restaurantId }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Tier F2 fix-the-fix (2026-05-16): the section used to wrap its
+  // inputs in a nested <form onSubmit={handleAdd}>, which is invalid
+  // HTML (nested forms collapse in some browsers) and caused the Add
+  // button to submit the *parent* EditRestaurantPage form rather than
+  // calling this handler — the disabled date never persisted. The form
+  // wrapper is gone now (replaced with a <div>); this keyboard handler
+  // preserves the "press Enter to submit" ergonomic without re-bubbling
+  // Enter up to the outer form.
+  const stopEnter = (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    e.stopPropagation()
+    handleAdd()
   }
 
   const handleRemove = async (id) => {
@@ -89,16 +103,20 @@ export default function DisabledDatesSection({ restaurantId }) {
         </div>
       )}
 
-      <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-[160px_1fr_auto] gap-3 items-end mb-4">
+      {/* NOT a <form> — see comment above stopEnter. This component is
+          rendered inside the parent EditRestaurantPage <form>, and nested
+          forms misbehave (the parent steals the submit). The Add button
+          is type="button" and the inputs handle Enter explicitly. */}
+      <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr_auto] gap-3 items-end mb-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{t('dateLabel')}</label>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+            onKeyDown={stopEnter}
             min={todayIso()}
             disabled={saving}
-            required
             className="w-full"
           />
         </div>
@@ -108,6 +126,7 @@ export default function DisabledDatesSection({ restaurantId }) {
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
+            onKeyDown={stopEnter}
             placeholder={t('reasonPlaceholder')}
             maxLength={200}
             disabled={saving}
@@ -115,13 +134,14 @@ export default function DisabledDatesSection({ restaurantId }) {
           />
         </div>
         <button
-          type="submit"
+          type="button"
+          onClick={handleAdd}
           disabled={saving || !date}
           className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
         >
           {saving ? t('saving') : t('addButton')}
         </button>
-      </form>
+      </div>
 
       {loading ? (
         <div className="text-sm text-gray-500">{t('loading')}</div>
