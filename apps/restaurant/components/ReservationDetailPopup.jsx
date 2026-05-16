@@ -147,6 +147,40 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
     return () => unsubs.forEach((fn) => fn())
   }, [isOpen, current?.id, t, showToast, onClose])
 
+  // Debounced availability lookup, mirroring QuickAdd's §3.3 pattern.
+  // Only runs in edit mode AND when the three driving fields are set.
+  // MUST be declared BEFORE the early-return below — Rules of Hooks
+  // requires every hook to be called in the same order on every render.
+  // The body's editMode guard makes this a cheap no-op when view mode.
+  useEffect(() => {
+    if (!editMode) { setAvailability(null); return }
+    if (!editForm.date || !editForm.time || !editForm.partySize) {
+      setAvailability(null)
+      return
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const data = await apiGet(
+          `/api/restaurant/availability?date=${encodeURIComponent(editForm.date)}` +
+          `&time=${encodeURIComponent(editForm.time)}` +
+          `&partySize=${encodeURIComponent(editForm.partySize)}`
+        )
+        setAvailability(data)
+      } catch {
+        setAvailability(null)
+      }
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [editMode, editForm.date, editForm.time, editForm.partySize])
+
+  // Closed-hours derived flag. Also lifted above the early return per
+  // Rules of Hooks. Inputs default to falsy in view mode so the memo
+  // returns `false` and the warning never renders.
+  const isOutsideHours = useMemo(() => {
+    if (!profile || !editForm.time) return false
+    return !isWithinAnyServicePeriod(profile, editForm.time)
+  }, [profile, editForm.time])
+
   if (!isOpen || !current) return null
 
   const actions = actionsForStatus(current)
@@ -299,34 +333,6 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
       setEditSaving(false)
     }
   }
-
-  // Debounced availability lookup, mirroring QuickAdd's §3.3 pattern.
-  // Only runs in edit mode AND when the three driving fields are set.
-  useEffect(() => {
-    if (!editMode) { setAvailability(null); return }
-    if (!editForm.date || !editForm.time || !editForm.partySize) {
-      setAvailability(null)
-      return
-    }
-    const handle = setTimeout(async () => {
-      try {
-        const data = await apiGet(
-          `/api/restaurant/availability?date=${encodeURIComponent(editForm.date)}` +
-          `&time=${encodeURIComponent(editForm.time)}` +
-          `&partySize=${encodeURIComponent(editForm.partySize)}`
-        )
-        setAvailability(data)
-      } catch {
-        setAvailability(null)
-      }
-    }, 300)
-    return () => clearTimeout(handle)
-  }, [editMode, editForm.date, editForm.time, editForm.partySize])
-
-  const isOutsideHours = useMemo(() => {
-    if (!profile || !editForm.time) return false
-    return !isWithinAnyServicePeriod(profile, editForm.time)
-  }, [profile, editForm.time])
 
   const handleAction = (actionType) => {
     if (actionType === 'noshow') return handleNoShow()
