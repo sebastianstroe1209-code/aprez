@@ -234,10 +234,37 @@ export default function LiveFloorPlanPage() {
     return { date: today, timeStart: buchHm, timeEnd: '23:59' }
   }
 
+  // Tier I fix-the-fix #3 — declare derived state HERE (before any
+  // useCallback whose dep array references it) so we don't hit a
+  // ReferenceError TDZ on the very first render. Pre-#3 these lived
+  // after the handlers and the handlers' deps (`tables`,
+  // `liveByTableId`) tripped a "Cannot access 'tables' before
+  // initialization" runtime error on every confirm-mode mount.
+  // The render-perf intent of fix #2 stays intact — only the
+  // declaration order moves.
+  const currentSection = sections.find(s => s.id === activeSection)
+  const tables = currentSection?.tables || []
+
+  // Memoized merge-layout helper (extracted to lib/liveGridLayout.js).
+  // Inputs: tables + liveByTableId. Transient state changes (drag
+  // hover, modal open/close, popup) don't recompute. See
+  // server/.smoke/c6-live-grid-layout-test.js for the purity + O(N)
+  // perf guard.
+  const gridLayout = useMemo(
+    () => computeLiveGridLayout(tables, liveByTableId),
+    [tables, liveByTableId]
+  )
+
+  // Hoist per-cell tooltip translations once per render so we don't
+  // call t() once per cell in the render loop. next-intl's t() is
+  // cheap but in a 30-cell × multi-render storm it adds up.
+  const overrideTinyHint = t('override.tinyHint')
+  const dragHandleTooltip = t('merge.handleTooltip')
+
   // Tier I commit 2 fix-the-fix #2 — useCallback on drag handlers so
   // the per-cell onDragOver/onDragLeave/onDrop wrappers don't get new
   // function references on every parent re-render. Combined with the
-  // useMemo'd grid layout below, this kills the per-render thrash that
+  // useMemo'd grid layout above, this kills the per-render thrash that
   // Cowork QA caught (renderer hang on subsequent state changes in
   // confirm-mode).
   const handleDragStart = useCallback((e, table) => {
@@ -549,29 +576,6 @@ export default function LiveFloorPlanPage() {
       alert('Failed to seat walk-in: ' + err.message)
     }
   }
-
-  const currentSection = sections.find(s => s.id === activeSection)
-  const tables = currentSection?.tables || []
-
-  // Tier I commit 2 fix-the-fix #2 — memoize the merge-layout
-  // computation. Pre-fix, this lived in an IIFE inside the JSX and ran
-  // on EVERY parent render (including drag-hover, override-modal,
-  // popup, 30s tick, every setState in the page). Cowork QA caught a
-  // 45s+ renderer hang on subsequent state changes in confirm-mode —
-  // most likely the per-render IIFE rebuilding Map/Set + per-cell t()
-  // calls compounding under React 18 concurrent-mode reconciliation.
-  // The smoke at server/.smoke/c6-live-grid-layout-test.js asserts
-  // this helper stays pure + O(N).
-  const gridLayout = useMemo(
-    () => computeLiveGridLayout(tables, liveByTableId),
-    [tables, liveByTableId]
-  )
-
-  // Hoist per-cell tooltip + label translations once per render so we
-  // don't call t() once per cell in the render loop. next-intl's t()
-  // is cheap but in a 30-cell × multi-render storm it adds up.
-  const overrideTinyHint = t('override.tinyHint')
-  const dragHandleTooltip = dragHandleTooltip
 
   if (loading) {
     return <div className="text-center py-12">Loading floor plan...</div>

@@ -4,7 +4,25 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-17. Tier I commit 2 fix-the-fix #2 SHIPPED — Live confirm-mode renderer hang resolved. Tier E + Tier F + Tier D all FULLY COMPLETE from earlier sessions.** Cowork browser QA caught a 45s+ renderer freeze on subsequent state changes in confirm-mode (Chrome extension reported "renderer may be frozen or unresponsive"; CDP Runtime.evaluate timed out). First render fine; second interaction → hang. Reproduced on fresh tabs.
+**Last session: 2026-05-17. Tier I commit 2 fix-the-fix #3 SHIPPED on top of #2 — TDZ regression on Live page first render in confirm-mode resolved.** Two bugs introduced by fix #2 (commit 698e9e8):
+
+1. **TDZ ReferenceError on every confirm-mode mount.** Fix #2 hoisted `handleDragOver` (useCallback with deps `[dragSourceId, tables, liveByTableId]`) above the declaration of `tables`. `useCallback`'s dep array is evaluated synchronously during render, so the page crashed with Next.js's runtime error overlay: `ReferenceError: Cannot access 'tables' before initialization` at `live/page.js:268`.
+
+2. **Self-referencing `const dragHandleTooltip = dragHandleTooltip`.** Fix #2 used `replace_all` on `t('merge.handleTooltip')` → `dragHandleTooltip` which also clobbered the declaration site itself, producing `const x = x` (undefined-or-TDZ depending on how V8 hoists).
+
+Fix #3 (one focused commit):
+- Reordered the derived state block — `currentSection`, `tables`, the `useMemo` for `gridLayout`, and the hoisted `overrideTinyHint` / `dragHandleTooltip` translations — to live BEFORE the drag-handler `useCallback`s. The render-perf intent of fix #2 stays intact; only the declaration order moves.
+- Restored `const dragHandleTooltip = t('merge.handleTooltip')` correctly.
+- SSR check: both `/dashboard/live` and `/dashboard/live?confirmReservationId=4577ea13-...` return 200 (substantive HTML, no error overlay).
+- Source-grep sweep across the file's 4 useEffect + 4 useCallback + 1 useMemo sites: only the live-page block was at risk; everything else has either `[]` deps or references state declared at the top of the component (useState calls at lines 47-92). No sibling TDZ risks elsewhere in `live/page.js`. Sister files (`ReservationDetailPopup.jsx`, `QuickAddReservation.jsx`, etc.) weren't touched in fix #2.
+
+Regression battery all green: new `c6-live-grid-layout-test` 18/18, C6 popup-actions 19/19, Tier I1 12/12, Tier E1 31/31, Tier E2 33/33, Tier F2 24/24, Tier D2 22/22, C1 dispatcher 12/12.
+
+QA fixture preserved (section `7c09e62a-...` + reservation `4577ea13-...`) — Cowork resumes confirm-mode QA against it.
+
+**Earlier this session:**
+
+Tier I commit 2 fix-the-fix #2 SHIPPED — Live confirm-mode renderer hang resolved. Tier E + Tier F + Tier D all FULLY COMPLETE from earlier sessions.** Cowork browser QA caught a 45s+ renderer freeze on subsequent state changes in confirm-mode (Chrome extension reported "renderer may be frozen or unresponsive"; CDP Runtime.evaluate timed out). First render fine; second interaction → hang. Reproduced on fresh tabs.
 
 **Root cause (best inference — no live repro was possible since the freeze blocks DevTools).** The Live page's JSX had an inline IIFE that rebuilt the merge-group Map + claimedCells Set + bounding-box math + L-shape detection on EVERY parent render — including renders triggered by `dragHover`, `overrideInfo`, popup state, 30s interval, any state change unrelated to merge layout. Combined with per-cell `t()` lookups and inline-arrow `onDragOver`/`onDrop` handlers (new fn references each render → React re-attaches listeners on every cell), the per-interaction cost compounded under React 18 concurrent rendering until it freezing the renderer.
 
