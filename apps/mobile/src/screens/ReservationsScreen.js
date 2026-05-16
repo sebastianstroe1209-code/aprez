@@ -15,6 +15,7 @@ import { Colors } from '../lib/colors';
 import api, { getErrorMessage } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useFocusEffect } from '@react-navigation/native';
+import { subscribe, subscribeStatus } from '../lib/socket';
 
 const STATUS_CONFIG = {
   PENDING: { color: Colors.warning, bg: Colors.warningBg, label: 'Pending', icon: 'time-outline' },
@@ -32,6 +33,7 @@ export default function ReservationsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState('upcoming'); // 'upcoming' or 'past'
+  const [socketDisconnected, setSocketDisconnected] = useState(false);
 
   const loadReservations = async () => {
     try {
@@ -50,6 +52,52 @@ export default function ReservationsScreen({ navigation }) {
       loadReservations();
     }, [])
   );
+
+  // C4: subscribe to §5a events on the user:{id} room.
+  useEffect(() => {
+    let unsubUpdated = null;
+    let unsubCancelled = null;
+    const upsert = (r) => {
+      if (!r?.id) return;
+      setReservations((list) => {
+        const idx = list.findIndex((x) => x.id === r.id);
+        if (idx === -1) return [r, ...list];
+        const next = list.slice();
+        next[idx] = { ...list[idx], ...r };
+        return next;
+      });
+    };
+    const onCancelled = (payload) => {
+      if (!payload?.id) return;
+      setReservations((list) =>
+        list.map((r) => (r.id === payload.id ? { ...r, ...payload, status: 'CANCELLED' } : r))
+      );
+    };
+    subscribe('reservation:updated', upsert).then((u) => { unsubUpdated = u; });
+    subscribe('reservation:cancelled', onCancelled).then((u) => { unsubCancelled = u; });
+    return () => {
+      if (unsubUpdated) unsubUpdated();
+      if (unsubCancelled) unsubCancelled();
+    };
+  }, []);
+
+  // Reconnect banner: surface bad-WiFi state after a 2s grace.
+  useEffect(() => {
+    let timer = null;
+    const unsub = subscribeStatus((connected) => {
+      if (connected) {
+        if (timer) { clearTimeout(timer); timer = null; }
+        setSocketDisconnected(false);
+        loadReservations(); // §4.4 refetch on reconnect
+      } else {
+        if (!timer) timer = setTimeout(() => setSocketDisconnected(true), 2000);
+      }
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsub();
+    };
+  }, []);
 
   const cancelReservation = (id) => {
     Alert.alert('Cancel Reservation', 'Are you sure you want to cancel this reservation?', [
@@ -136,6 +184,11 @@ export default function ReservationsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {socketDisconnected && (
+        <View style={styles.reconnectBanner}>
+          <Text style={styles.reconnectBannerText}>Reconnecting…</Text>
+        </View>
+      )}
       <View style={styles.header}>
         <Text style={styles.title}>My Reservations</Text>
       </View>
@@ -194,6 +247,8 @@ export default function ReservationsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  reconnectBanner: { backgroundColor: '#fef3c7', borderBottomWidth: 1, borderBottomColor: '#fde68a', paddingVertical: 6, alignItems: 'center' },
+  reconnectBannerText: { color: '#78350f', fontSize: 13, fontWeight: '600' },
   header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
   title: { fontSize: 28, fontWeight: '800', color: Colors.text },
   tabs: {

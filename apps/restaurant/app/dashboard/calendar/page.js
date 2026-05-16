@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { apiGet } from '../../../lib/api'
+import { subscribe } from '../../../lib/socket'
+import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 
 // SPEC §11: dates handled in Europe/Bucharest. en-CA returns YYYY-MM-DD.
 const todayBucharest = () =>
@@ -18,6 +20,44 @@ export default function CalendarPage() {
   useEffect(() => {
     loadData()
   }, [selectedDate, activeSection])
+
+  // C4 real-time reservation updates (§5a). Surgical merge keyed on id; only
+  // reservations matching the currently selected date stay in view.
+  useEffect(() => {
+    const matchesSelectedDate = (r) => {
+      const resDate = typeof r.date === 'string' ? r.date.slice(0, 10) : new Date(r.date).toISOString().slice(0, 10)
+      return resDate === selectedDate
+    }
+    const upsert = (r) => {
+      if (!r?.id) return
+      setReservations((list) => {
+        const idx = list.findIndex((x) => x.id === r.id)
+        if (idx === -1) {
+          return matchesSelectedDate(r) ? [...list, r] : list
+        }
+        const merged = { ...list[idx], ...r }
+        if (!matchesSelectedDate(merged)) {
+          return list.filter((_, i) => i !== idx)
+        }
+        const next = list.slice()
+        next[idx] = merged
+        return next
+      })
+    }
+    const onCancelled = (payload) => {
+      if (!payload?.id) return
+      setReservations((list) => list.filter((r) => r.id !== payload.id))
+    }
+    const unsubs = [
+      subscribe('reservation:created', upsert),
+      subscribe('reservation:updated', upsert),
+      subscribe('reservation:cancelled', onCancelled),
+    ]
+    return () => unsubs.forEach((fn) => fn())
+  }, [selectedDate])
+
+  const refetchOnReconnect = useCallback(() => { loadData() }, [selectedDate, activeSection])
+  useSocketRefetch(refetchOnReconnect)
 
   const loadData = async () => {
     try {

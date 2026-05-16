@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import api, { getErrorMessage } from '../lib/api';
+import { getSocket, resetSocket } from '../lib/socket';
 
 const AuthContext = createContext(null);
 
@@ -20,6 +21,9 @@ export function AuthProvider({ children }) {
       if (token) {
         const res = await api.get('/users/me');
         setUser(res.data);
+        // C4: spin up the socket once we know the user is authenticated so
+        // §5a events arrive on user:{id}.
+        getSocket().catch(() => {});
       }
     } catch (e) {
       await SecureStore.deleteItemAsync('userToken').catch(() => {});
@@ -35,6 +39,9 @@ export function AuthProvider({ children }) {
       const res = await api.post('/auth/login', { email, password });
       await SecureStore.setItemAsync('userToken', res.data.token);
       setUser(res.data.user);
+      // Rebuild the socket so the handshake picks up the new token.
+      resetSocket();
+      getSocket().catch(() => {});
       return true;
     } catch (e) {
       setError(getErrorMessage(e));
@@ -54,6 +61,8 @@ export function AuthProvider({ children }) {
       });
       await SecureStore.setItemAsync('userToken', res.data.token);
       setUser(res.data.user);
+      resetSocket();
+      getSocket().catch(() => {});
       return true;
     } catch (e) {
       setError(getErrorMessage(e));
@@ -63,6 +72,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     await SecureStore.deleteItemAsync('userToken').catch(() => {});
+    resetSocket();
     setUser(null);
   };
 

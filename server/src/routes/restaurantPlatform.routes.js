@@ -351,8 +351,9 @@ router.put(
         },
       });
 
+      const io = req.app.get('io');
       if (updated.userId) {
-        dispatchAsync(prisma, req.app.get('io'), {
+        dispatchAsync(prisma, io, {
           event: EVENTS.RESERVATION_CONFIRMED,
           userId: updated.userId,
           restaurantId,
@@ -361,6 +362,8 @@ router.put(
           partySize: updated.partySize,
         });
       }
+      io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
 
       res.json(updated);
     } catch (error) {
@@ -414,8 +417,9 @@ router.put(
         },
       });
 
+      const io = req.app.get('io');
       if (updated.userId) {
-        dispatchAsync(prisma, req.app.get('io'), {
+        dispatchAsync(prisma, io, {
           event: EVENTS.RESERVATION_REJECTED,
           userId: updated.userId,
           restaurantId,
@@ -423,6 +427,9 @@ router.put(
           time: updated.time,
         });
       }
+      const rejectPayload = { ...updated, cancelledBy: 'restaurant', reason: 'rejected' };
+      io.emitToRestaurant(restaurantId, 'reservation:cancelled', rejectPayload);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:cancelled', rejectPayload);
 
       res.json(updated);
     } catch (error) {
@@ -487,6 +494,10 @@ router.put(
         },
       });
 
+      const io = req.app.get('io');
+      io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
+
       res.json(updated);
     } catch (error) {
       next(error);
@@ -526,8 +537,9 @@ router.put(
         },
       });
 
+      const io = req.app.get('io');
       if (updated.userId) {
-        dispatchAsync(prisma, req.app.get('io'), {
+        dispatchAsync(prisma, io, {
           event: EVENTS.RESERVATION_CANCELLED_BY_RESTAURANT,
           userId: updated.userId,
           restaurantId,
@@ -535,6 +547,9 @@ router.put(
           time: updated.time,
         });
       }
+      const cancelPayload = { ...updated, cancelledBy: 'restaurant' };
+      io.emitToRestaurant(restaurantId, 'reservation:cancelled', cancelPayload);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:cancelled', cancelPayload);
 
       res.json(updated);
     } catch (error) {
@@ -603,6 +618,9 @@ router.post(
         },
       });
 
+      const io = req.app.get('io');
+      io.emitToRestaurant(restaurantId, 'reservation:created', reservation);
+
       res.status(201).json(reservation);
     } catch (error) {
       next(error);
@@ -661,15 +679,24 @@ router.put(
       });
 
       // Update table status to OCCUPIED if tableId exists
+      const io = req.app.get('io');
       if (updated.tableId) {
+        const tableNow = new Date();
         await prisma.restaurantTable.update({
           where: { id: updated.tableId },
           data: {
             status: 'OCCUPIED',
-            statusChangedAt: new Date(),
+            statusChangedAt: tableNow,
           },
         });
+        io.emitToRestaurant(restaurantId, 'table:status-changed', {
+          tableId: updated.tableId,
+          newStatus: 'OCCUPIED',
+          statusChangedAt: tableNow,
+        });
       }
+      io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
 
       res.json(updated);
     } catch (error) {
@@ -708,16 +735,24 @@ router.put(
         },
       });
 
-      // Free up the table if it was occupied
+      const io = req.app.get('io');
       if (updated.tableId) {
+        const tableNow = new Date();
         await prisma.restaurantTable.update({
           where: { id: updated.tableId },
           data: {
             status: 'FREE',
-            statusChangedAt: new Date(),
+            statusChangedAt: tableNow,
           },
         });
+        io.emitToRestaurant(restaurantId, 'table:status-changed', {
+          tableId: updated.tableId,
+          newStatus: 'FREE',
+          statusChangedAt: tableNow,
+        });
       }
+      io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
 
       res.json(updated);
     } catch (error) {
@@ -756,16 +791,24 @@ router.put(
         },
       });
 
-      // Free up the table
+      const io = req.app.get('io');
       if (updated.tableId) {
+        const tableNow = new Date();
         await prisma.restaurantTable.update({
           where: { id: updated.tableId },
           data: {
             status: 'FREE',
-            statusChangedAt: new Date(),
+            statusChangedAt: tableNow,
           },
         });
+        io.emitToRestaurant(restaurantId, 'table:status-changed', {
+          tableId: updated.tableId,
+          newStatus: 'FREE',
+          statusChangedAt: tableNow,
+        });
       }
+      io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
+      if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
 
       res.json(updated);
     } catch (error) {
@@ -824,8 +867,9 @@ router.put(
         },
       });
 
+      const io = req.app.get('io');
       if (reservationAfter.userId) {
-        dispatchAsync(prisma, req.app.get('io'), {
+        dispatchAsync(prisma, io, {
           event: EVENTS.MODIFICATION_APPROVED,
           userId: reservationAfter.userId,
           restaurantId,
@@ -834,6 +878,8 @@ router.put(
           partySize: reservationAfter.partySize,
         });
       }
+      io.emitToRestaurant(restaurantId, 'reservation:updated', reservationAfter);
+      if (reservationAfter.userId) io.emitToUser(reservationAfter.userId, 'reservation:updated', reservationAfter);
 
       res.json(updated);
     } catch (error) {
@@ -874,8 +920,9 @@ router.put(
         },
       });
 
+      const io = req.app.get('io');
       if (modification.reservation && modification.reservation.userId) {
-        dispatchAsync(prisma, req.app.get('io'), {
+        dispatchAsync(prisma, io, {
           event: EVENTS.MODIFICATION_REJECTED,
           userId: modification.reservation.userId,
           restaurantId,
@@ -883,6 +930,15 @@ router.put(
           time: modification.reservation.time,
         });
       }
+      const modPayload = {
+        id: modification.reservation?.id,
+        restaurantId,
+        userId: modification.reservation?.userId,
+        modificationPending: null,
+        modificationRejected: { id: updated.id, resolvedAt: updated.resolvedAt },
+      };
+      io.emitToRestaurant(restaurantId, 'reservation:updated', modPayload);
+      if (modPayload.userId) io.emitToUser(modPayload.userId, 'reservation:updated', modPayload);
 
       res.json(updated);
     } catch (error) {
@@ -987,13 +1043,36 @@ router.put(
       const { id } = req.params;
       const { status } = req.body;
 
+      const previous = await prisma.restaurantTable.findUnique({
+        where: { id },
+        select: { status: true, restaurantId: true },
+      });
+
+      const tableNow = new Date();
       const updated = await prisma.restaurantTable.update({
         where: { id },
         data: {
           status,
-          statusChangedAt: new Date(),
+          statusChangedAt: tableNow,
         },
       });
+
+      const io = req.app.get('io');
+      io.emitToRestaurant(updated.restaurantId, 'table:status-changed', {
+        tableId: updated.id,
+        newStatus: updated.status,
+        statusChangedAt: updated.statusChangedAt,
+      });
+      // Heuristic walk-in lifecycle signal: any explicit OCCUPIED→FREE flip at
+      // this generic endpoint represents a walk-in being cleared (the
+      // reservation /complete and /no-show paths free the table via Prisma
+      // directly, not via this route, so we don't double-fire).
+      if (previous?.status === 'OCCUPIED' && status === 'FREE') {
+        io.emitToRestaurant(updated.restaurantId, 'walkin:ended', {
+          tableId: updated.id,
+          endedAt: tableNow,
+        });
+      }
 
       res.json(updated);
     } catch (error) {
@@ -1017,12 +1096,25 @@ router.put(
       const { id } = req.params;
       const { guestCount } = req.body;
 
+      const tableNow = new Date();
       const updated = await prisma.restaurantTable.update({
         where: { id },
         data: {
           status: 'OCCUPIED',
-          statusChangedAt: new Date(),
+          statusChangedAt: tableNow,
         },
+      });
+
+      const io = req.app.get('io');
+      io.emitToRestaurant(updated.restaurantId, 'walkin:created', {
+        tableId: updated.id,
+        partySize: guestCount,
+        startedAt: tableNow,
+      });
+      io.emitToRestaurant(updated.restaurantId, 'table:status-changed', {
+        tableId: updated.id,
+        newStatus: 'OCCUPIED',
+        statusChangedAt: tableNow,
       });
 
       res.json(updated);

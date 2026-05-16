@@ -1,32 +1,66 @@
 // Socket.io Real-time Event Handlers
-// Handles LIVE mode, reservation updates, and notifications
+// Handles LIVE mode, reservation updates, and notifications.
+// Event names follow the §5a contract in memory/waiter_ux_strategy.md (kebab-case).
 
+const jwt = require('jsonwebtoken');
 const { EVENTS, dispatchAsync } = require('../services/notifications');
 const { checkAndFireRemindersFor } = require('../jobs/reminders');
 
 module.exports = (io, prisma) => {
-  // Track which restaurants are connected (for targeted events)
-  const restaurantRooms = new Map(); // restaurantId -> Set of socket IDs
+  // JWT handshake middleware (C4).
+  // Clients pass their token via `auth.token` in the io() options. We verify
+  // here and stash the decoded payload on the socket so the connection handler
+  // can auto-join the correct room. Tokenless connections are allowed but get
+  // no auto-join — they can still self-declare via the legacy join:* events,
+  // which is what the dev/test scripts rely on.
+  io.use((socket, next) => {
+    const token = socket.handshake?.auth?.token || socket.handshake?.query?.token;
+    if (!token) {
+      socket.userPayload = null;
+      return next();
+    }
+    try {
+      socket.userPayload = jwt.verify(token, process.env.JWT_SECRET);
+      next();
+    } catch (err) {
+      // Bad token: refuse the connection so the client can re-auth instead of
+      // silently receiving no events.
+      next(new Error('invalid_token'));
+    }
+  });
 
   io.on('connection', (socket) => {
-    console.log(`Socket connected: ${socket.id}`);
+    console.log(`Socket connected: ${socket.id} (role=${socket.userPayload?.role || 'anon'})`);
 
-    // Restaurant staff joins their restaurant's room
+    // Auto-join based on JWT role.
+    if (socket.userPayload) {
+      const { role, id, restaurantId } = socket.userPayload;
+      if (role === 'restaurant' && restaurantId) {
+        socket.join(`restaurant:${restaurantId}`);
+        socket.restaurantId = restaurantId;
+      } else if (role === 'user' && id) {
+        socket.join(`user:${id}`);
+        socket.userId = id;
+      } else if (role === 'admin') {
+        socket.join('admin:global');
+        socket.isAdmin = true;
+      }
+    }
+
+    // Legacy self-declared joins (kept for back-compat with dev/test scripts
+    // that connect without a token).
     socket.on('join:restaurant', (restaurantId) => {
       socket.join(`restaurant:${restaurantId}`);
       socket.restaurantId = restaurantId;
-      console.log(`Socket ${socket.id} joined restaurant:${restaurantId}`);
     });
-
-    // User joins their personal room (for notifications)
     socket.on('join:user', (userId) => {
       socket.join(`user:${userId}`);
       socket.userId = userId;
-      console.log(`Socket ${socket.id} joined user:${userId}`);
     });
 
     // ============================================
     // TABLE STATUS CHANGES (LIVE MODE)
+    // Kept for the live-page socket shortcut; REST endpoint is authoritative.
     // ============================================
     socket.on('table:updateStatus', async (data) => {
       const { tableId, status, guestCount } = data;
@@ -39,10 +73,9 @@ module.exports = (io, prisma) => {
           },
         });
 
-        // Broadcast to all staff in this restaurant
-        io.to(`restaurant:${table.restaurantId}`).emit('table:statusChanged', {
+        io.to(`restaurant:${table.restaurantId}`).emit('table:status-changed', {
           tableId: table.id,
-          status: table.status,
+          newStatus: table.status,
           statusChangedAt: table.statusChangedAt,
           guestCount,
         });
@@ -51,9 +84,6 @@ module.exports = (io, prisma) => {
       }
     });
 
-    // ============================================
-    // TABLE MOVE (LIVE MODE)
-    // ============================================
     socket.on('table:move', async (data) => {
       try {
         io.to(`restaurant:${socket.restaurantId}`).emit('table:moved', data);
@@ -62,47 +92,34 @@ module.exports = (io, prisma) => {
       }
     });
 
-    // ============================================
-    // DISCONNECT
-    // ============================================
     socket.on('disconnect', () => {
       console.log(`Socket disconnected: ${socket.id}`);
     });
   });
 
   // ============================================
-  // SERVER-SIDE EVENT EMITTERS
-  // These are called from route handlers
+  // SERVER-SIDE EVENT EMITTERS (called from route handlers)
   // ============================================
 
-  // Emit to a specific restaurant's staff
   io.emitToRestaurant = (restaurantId, event, data) => {
     io.to(`restaurant:${restaurantId}`).emit(event, data);
   };
 
-  // Emit to a specific user
   io.emitToUser = (userId, event, data) => {
     io.to(`user:${userId}`).emit(event, data);
   };
 
+  io.emitToAdmins = (event, data) => {
+    io.to('admin:global').emit(event, data);
+  };
+
   // ============================================
-  // SCHEDULED TIMERS
-  // Check every minute for:
-  // 1. Tables that should turn ORANGE (arriving soon - 1h before reservation)
-  // 2. Tables that should turn LIGHT RED (awaiting guest - at reservation time)
-  // 3. 120-minute occupied timer expiry
-  // 4. Light Red 15-minute reminders
-  // 5. 45-minute pre-reservation reminders
+  // SCHEDULED TIMERS (every minute)
   // ============================================
 
-  const TIMER_INTERVAL = 60 * 1000; // Check every minute
-
-  // In-memory dedup so the per-minute tick doesn't persist a Notification row
-  // every minute past the threshold. Keyed by `${tableId}:${statusChangedAt}`.
-  // Cleared on process restart — acceptable for MVP since a missed reminder
-  // post-restart is preferable to spamming the dashboard.
+  const TIMER_INTERVAL = 60 * 1000;
   const dispatchedTimer120 = new Set();
-  const dispatchedTimerAwaiting = new Set(); // key adds the 15-min bucket
+  const dispatchedTimerAwaiting = new Set();
 
   setInterval(async () => {
     try {
@@ -110,7 +127,6 @@ module.exports = (io, prisma) => {
       const today = now.toISOString().split('T')[0];
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-      // 1. Find reservations starting within 1 hour — set tables to ARRIVING_SOON
       const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
       const oneHourTime = `${String(oneHourFromNow.getHours()).padStart(2, '0')}:${String(oneHourFromNow.getMinutes()).padStart(2, '0')}`;
 
@@ -130,15 +146,14 @@ module.exports = (io, prisma) => {
             where: { id: res.table.id },
             data: { status: 'ARRIVING_SOON', statusChangedAt: now },
           });
-          io.emitToRestaurant(res.restaurantId, 'table:statusChanged', {
+          io.emitToRestaurant(res.restaurantId, 'table:status-changed', {
             tableId: res.table.id,
-            status: 'ARRIVING_SOON',
+            newStatus: 'ARRIVING_SOON',
             statusChangedAt: now,
           });
         }
       }
 
-      // 2. Find reservations at current time — set tables to AWAITING_GUEST
       const atTimeReservations = await prisma.reservation.findMany({
         where: {
           date: new Date(today),
@@ -156,15 +171,14 @@ module.exports = (io, prisma) => {
             where: { id: res.table.id },
             data: { status: 'AWAITING_GUEST', statusChangedAt: now },
           });
-          io.emitToRestaurant(res.restaurantId, 'table:statusChanged', {
+          io.emitToRestaurant(res.restaurantId, 'table:status-changed', {
             tableId: res.table.id,
-            status: 'AWAITING_GUEST',
+            newStatus: 'AWAITING_GUEST',
             statusChangedAt: now,
           });
         }
       }
 
-      // 3. Check 120-minute timer on OCCUPIED tables
       const occupiedTables = await prisma.restaurantTable.findMany({
         where: { status: 'OCCUPIED', statusChangedAt: { not: null } },
       });
@@ -190,7 +204,6 @@ module.exports = (io, prisma) => {
         }
       }
 
-      // 4. Light Red 15-minute reminders
       const awaitingTables = await prisma.restaurantTable.findMany({
         where: { status: 'AWAITING_GUEST', statusChangedAt: { not: null } },
       });
@@ -217,9 +230,6 @@ module.exports = (io, prisma) => {
         }
       }
 
-      // 5. 45-minute reminders for upcoming reservations.
-      // Delegated to jobs/reminders.js — Bucharest wall-clock window with
-      // dedup via Reservation.reminderSentAt. SPEC §5.7.
       await checkAndFireRemindersFor(prisma, io, now);
 
     } catch (error) {

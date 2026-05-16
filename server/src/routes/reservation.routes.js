@@ -248,6 +248,14 @@ router.post(
         partySize: reservation.partySize,
       });
 
+      // C4 §5a real-time broadcast.
+      io.emitToRestaurant(restaurantId, 'reservation:created', reservation);
+      if (reservation.status === 'PENDING') {
+        io.emitToRestaurant(restaurantId, 'reservation:pending-created', reservation);
+        io.emitToAdmins('reservation:pending-created', { ...reservation, restaurantId });
+      }
+      io.emitToUser(userId, 'reservation:updated', reservation);
+
       res.status(201).json(reservation);
     } catch (error) {
       next(error);
@@ -397,13 +405,18 @@ router.put(
         },
       });
 
-      dispatchAsync(prisma, req.app.get('io'), {
+      const io = req.app.get('io');
+      dispatchAsync(prisma, io, {
         event: EVENTS.RESERVATION_CANCELLED_BY_DINER,
         restaurantId: reservation.restaurantId,
         userId,
         date: reservation.date,
         time: reservation.time,
       });
+
+      const cancelPayload = { id, restaurantId: reservation.restaurantId, userId, cancelledBy: 'user', ...cancelled };
+      io.emitToRestaurant(reservation.restaurantId, 'reservation:cancelled', cancelPayload);
+      io.emitToUser(userId, 'reservation:cancelled', cancelPayload);
 
       res.json(cancelled);
     } catch (error) {
@@ -464,13 +477,29 @@ router.post(
       if (modification.requestedDate) detailParts.push(`date → ${new Date(modification.requestedDate).toISOString().slice(0, 10)}`);
       if (modification.requestedTime) detailParts.push(`time → ${modification.requestedTime}`);
       if (modification.requestedPartySize) detailParts.push(`party → ${modification.requestedPartySize}`);
-      dispatchAsync(prisma, req.app.get('io'), {
+      const io = req.app.get('io');
+      dispatchAsync(prisma, io, {
         event: EVENTS.MODIFICATION_REQUESTED,
         restaurantId: reservation.restaurantId,
         userId,
         date: reservation.date,
         time: reservation.time,
         details: detailParts.join(', '),
+      });
+
+      // §5a: surface the modification-pending state as a reservation update
+      // so the restaurant + diner lists refresh without re-fetch.
+      io.emitToRestaurant(reservation.restaurantId, 'reservation:updated', {
+        id: reservation.id,
+        restaurantId: reservation.restaurantId,
+        userId,
+        modificationPending: modification,
+      });
+      io.emitToUser(userId, 'reservation:updated', {
+        id: reservation.id,
+        restaurantId: reservation.restaurantId,
+        userId,
+        modificationPending: modification,
       });
 
       res.status(201).json(modification);

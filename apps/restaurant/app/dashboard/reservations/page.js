@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiGet, apiPut, apiPost } from '../../../lib/api'
 import { formatDate } from '../../../lib/format'
+import { subscribe } from '../../../lib/socket'
+import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 
 const statusBadgeColor = {
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -34,6 +36,52 @@ export default function ReservationsPage() {
   useEffect(() => {
     loadReservations()
   }, [tab])
+
+  // C4 real-time wiring per §5a. Surgical list updates — no whole-list refetch
+  // on each event. Tab/full refetch only on socket reconnect or tab focus
+  // (§4.4) via useSocketRefetch below.
+  useEffect(() => {
+    const isRelevantToTab = (r) => {
+      if (tab === 'pending') return r.status === 'PENDING'
+      if (tab === 'today') {
+        const todayBuch = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
+        const resDate = typeof r.date === 'string' ? r.date.slice(0, 10) : new Date(r.date).toISOString().slice(0, 10)
+        return resDate === todayBuch
+      }
+      return true
+    }
+    const upsert = (r) => {
+      if (!r?.id) return
+      setReservations((list) => {
+        const idx = list.findIndex((x) => x.id === r.id)
+        if (idx === -1) {
+          return isRelevantToTab(r) ? [r, ...list] : list
+        }
+        const merged = { ...list[idx], ...r }
+        if (!isRelevantToTab(merged)) {
+          return list.filter((_, i) => i !== idx)
+        }
+        const next = list.slice()
+        next[idx] = merged
+        return next
+      })
+    }
+    const onCancelled = (payload) => {
+      if (!payload?.id) return
+      setReservations((list) =>
+        list.map((r) => (r.id === payload.id ? { ...r, ...payload, status: 'CANCELLED' } : r))
+      )
+    }
+    const unsubs = [
+      subscribe('reservation:created', upsert),
+      subscribe('reservation:updated', upsert),
+      subscribe('reservation:cancelled', onCancelled),
+    ]
+    return () => unsubs.forEach((fn) => fn())
+  }, [tab])
+
+  const refetchOnReconnect = useCallback(() => { loadReservations() }, [tab])
+  useSocketRefetch(refetchOnReconnect)
 
   const loadReservations = async () => {
     try {

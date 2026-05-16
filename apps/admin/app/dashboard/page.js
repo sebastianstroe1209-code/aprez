@@ -2,11 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { apiGet } from '../../lib/api'
+import { subscribe } from '../../lib/socket'
 
 export default function DashboardPage() {
   const [restaurantCount, setRestaurantCount] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Live counter of pending reservations seen via socket since this session
+  // opened. Useful as a basic admin monitoring signal until the full admin
+  // monitoring page exists (Tier J).
+  const [livePendingSeen, setLivePendingSeen] = useState(0)
 
   useEffect(() => {
     apiGet('/api/admin/restaurants')
@@ -16,6 +21,13 @@ export default function DashboardPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    const unsub = subscribe('reservation:pending-created', () => {
+      setLivePendingSeen((n) => n + 1)
+    })
+    return () => unsub()
   }, [])
 
   if (loading) {
@@ -45,6 +57,11 @@ export default function DashboardPage() {
             <p className="text-3xl font-bold text-gray-800">{restaurantCount ?? '—'}</p>
             <div className="bg-blue-500 h-1 rounded mt-4"></div>
           </div>
+        </div>
+        <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-amber-300">
+          <p className="text-gray-600 text-sm font-medium mb-2">Pending reservations (live since this session)</p>
+          <p className="text-3xl font-bold text-gray-800">{livePendingSeen}</p>
+          <div className="bg-amber-400 h-1 rounded mt-4"></div>
         </div>
       </div>
 

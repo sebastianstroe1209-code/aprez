@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { apiGet, apiPut } from '../../../lib/api'
 import { formatTime } from '../../../lib/format'
+import { subscribe } from '../../../lib/socket'
+import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 
 const statusColors = {
   FREE: { bg: 'bg-green-50', border: 'border-table-free', text: 'text-green-900', label: 'Free' },
@@ -40,6 +42,37 @@ export default function LiveFloorPlanPage() {
     const interval = setInterval(loadLayout, 30000) // Auto-refresh every 30 seconds
     return () => clearInterval(interval)
   }, [])
+
+  // C4 real-time table-status updates (§5a). Patch table in place rather than
+  // refetching the whole layout — keeps the live view responsive even at
+  // busy times.
+  useEffect(() => {
+    const applyTableStatus = ({ tableId, newStatus, statusChangedAt }) => {
+      setSections((prev) =>
+        prev.map((sec) => ({
+          ...sec,
+          tables: sec.tables.map((t) =>
+            t.id === tableId ? { ...t, status: newStatus, statusChangedAt } : t
+          ),
+        }))
+      )
+      setLastRefresh(new Date())
+    }
+    const onWalkinCreated = ({ tableId }) => {
+      // status:OCCUPIED already fired via table:status-changed alongside;
+      // walkin:created is a hook for future overlay updates (party size).
+      // No-op for the current MVP UI.
+    }
+    const unsubs = [
+      subscribe('table:status-changed', applyTableStatus),
+      subscribe('walkin:created', onWalkinCreated),
+      subscribe('walkin:ended', onWalkinCreated),
+    ]
+    return () => unsubs.forEach((fn) => fn())
+  }, [])
+
+  const refetchOnReconnect = useCallback(() => { loadLayout() }, [])
+  useSocketRefetch(refetchOnReconnect)
 
   useEffect(() => {
     if (!confirmReservationId) {

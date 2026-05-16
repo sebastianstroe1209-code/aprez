@@ -3,6 +3,8 @@
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { getSocket, resetSocket } from '../../lib/socket'
+import ReconnectingBanner from '../../components/ReconnectingBanner'
 
 const navigationItems = [
   { name: 'Dashboard', href: '/dashboard', icon: '📊' },
@@ -20,10 +22,15 @@ export default function DashboardLayout({ children }) {
     const token = localStorage.getItem('adminToken')
     if (!token) {
       router.push('/login')
+    } else {
+      // Initialize the shared Socket.IO connection (C4). Admins join
+      // admin:global via the JWT handshake on the server.
+      getSocket()
     }
   }, [router])
 
   const handleLogout = () => {
+    resetSocket()
     localStorage.removeItem('adminToken')
     router.push('/login')
   }
@@ -74,6 +81,7 @@ export default function DashboardLayout({ children }) {
 
       {/* Main Content */}
       <div className="flex-1 ml-64">
+        <ReconnectingBanner />
         {/* Top Bar */}
         <header className="bg-white border-b border-gray-200 px-8 py-6 sticky top-0 shadow-sm z-10">
           <h2 className="text-2xl font-bold text-gray-800">ApRez Admin Portal</h2>
