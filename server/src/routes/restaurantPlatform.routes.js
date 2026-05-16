@@ -976,6 +976,57 @@ router.put(
         return res.status(400).json({ error: 'No fields to update' });
       }
 
+      // C6 P3-6: conflict check per §4.1 — when time/date changes on a
+      // tabled reservation, the new slot must not overlap another active
+      // booking on the same table. (Phase 1's "trust model" comment was
+      // pragmatic but §4.1 mandates a check; P3-6 adds it.) Skipped when
+      // tableId is null (the edit doesn't put anyone onto a table) or
+      // when neither time nor date changed.
+      if (
+        (updateData.time !== undefined || updateData.date !== undefined) &&
+        // Need to know the reservation's current tableId. Fetch only when
+        // we might conflict so the common no-table-change path stays cheap.
+        true
+      ) {
+        const current = await prisma.reservation.findFirst({
+          where: { id, restaurantId },
+          select: { tableId: true, time: true, endTime: true, date: true },
+        });
+        if (!current) {
+          return res.status(404).json({ error: 'Reservation not found' });
+        }
+        if (current.tableId) {
+          const checkDate = updateData.date || current.date;
+          const checkTime = updateData.time || current.time;
+          const checkEndTime = updateData.endTime || current.endTime;
+          const overlap = await prisma.reservation.findFirst({
+            where: {
+              restaurantId,
+              tableId: current.tableId,
+              date: checkDate,
+              id: { not: id },
+              status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
+              AND: [
+                { time: { lt: checkEndTime } },
+                { endTime: { gt: checkTime } },
+              ],
+            },
+            select: { id: true, time: true },
+          });
+          if (overlap) {
+            const tableRow = await prisma.restaurantTable.findUnique({
+              where: { id: current.tableId },
+              select: { tableNumber: true },
+            });
+            return res.status(409).json({
+              error: 'table-conflict',
+              tableLabel: tableRow?.tableNumber || null,
+              conflictTime: overlap.time,
+            });
+          }
+        }
+      }
+
       const result = await prisma.reservation.updateMany({
         where: { id, restaurantId },
         data: updateData,

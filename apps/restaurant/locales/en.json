@@ -98,6 +98,32 @@
     "timeoutError": "Connection lost. Retry?",
     "addDetails": "+ Add details"
   },
+  "edit": {
+    "title": "Edit reservation",
+    "field": {
+      "date": "Date",
+      "time": "Time",
+      "party": "Party Size",
+      "phone": "Phone",
+      "specialRequests": "Special Requests"
+    },
+    "button": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "saving": "Saving…"
+    },
+    "toast": {
+      "saved": "Reservation updated — {name}"
+    },
+    "warning": {
+      "closedHours": "{time} is outside service periods. Save anyway?",
+      "tableConflictHint": "Conflicts with the current table booking — may need to reassign."
+    },
+    "error": {
+      "tableConflict": "Table {tableLabel} already has a reservation at {time}. Pick a different slot or reassign the table.",
+      "timeoutRetry": "Connection lost. Retry?"
+    }
+  },
   "noShow": {
     "toast": {
       "marked": "Marked no-show — {name}",

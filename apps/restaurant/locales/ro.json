@@ -98,6 +98,32 @@
     "timeoutError": "Conexiune pierdută. Reîncearcă?",
     "addDetails": "+ Adaugă detalii"
   },
+  "edit": {
+    "title": "Modifică rezervarea",
+    "field": {
+      "date": "Dată",
+      "time": "Oră",
+      "party": "Persoane",
+      "phone": "Telefon",
+      "specialRequests": "Cerințe speciale"
+    },
+    "button": {
+      "save": "Salvează",
+      "cancel": "Anulează",
+      "saving": "Se salvează…"
+    },
+    "toast": {
+      "saved": "Rezervare actualizată — {name}"
+    },
+    "warning": {
+      "closedHours": "{time} este în afara perioadelor de serviciu. Salvezi oricum?",
+      "tableConflictHint": "Conflict cu rezervarea actuală a mesei — poate fi nevoie de o reatribuire."
+    },
+    "error": {
+      "tableConflict": "Masa {tableLabel} are deja o rezervare la {time}. Alege alt interval sau reatribuie masa.",
+      "timeoutRetry": "Conexiune pierdută. Reîncearcă?"
+    }
+  },
   "noShow": {
     "toast": {
       "marked": "Marcat ca neprezentare — {name}",

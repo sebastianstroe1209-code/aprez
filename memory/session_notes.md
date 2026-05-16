@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 item 5 (No-show with undo) COMPLETE — ReservationDetailPopup's existing No-show button now wired internally: PUT `/api/restaurant/reservations/:id/no-show` on click, closes popup, fires undo toast (10s grace) whose action invokes the new PUT `/restore-no-show` endpoint. Race-safe: backend captures `noShowPriorStatus` + `noShowPriorTableStatus` columns on no-show and verifies table is still FREE before restoring; if a walk-in claimed it during the grace, responds 409 `{ error: 'table-no-longer-free', tableLabel }` and the toast renders the labeled error. Schema gained both prior-status columns (additive, two `db:push` runs no `--accept-data-loss`). Also fixed the TT-prefix bug across 4 sites (WalkInActionSheet × 2, ReservationDetailPopup `tableLabelOf`, dashboard/summary `tableLabel` payload). P3-6 (Edit existing reservation) is next.**
+**Last session: 2026-05-16. Tier C6 Phase 3 item 6 (Edit existing reservation) COMPLETE — ReservationDetailPopup now supports inline edit mode: click Edit on a Pending/Confirmed/AutoConfirmed/AwaitingGuest reservation, popup swaps view-mode body for a form (Date / Time / Party / Phone / Special Requests pre-filled). Availability hint + closed-hours warning mirror QuickAdd. Pending-sync save calls PUT `/api/restaurant/reservations/:id`; 200 → success toast + return to view-mode with updated data; 409 `table-conflict` → inline specific error. Bundled with backend conflict-check addition: PUT `/reservations/:id` now rejects time/date changes that would overlap another booking on the assigned table. Schema unchanged. P3-7 (Dashboard rebuild — the big one) is next.**
 
 ## Where we left off
 
@@ -46,9 +46,32 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 item 5 (No-show + undo) complete; P3-6 (Edit existing reservation) is next, gated on Sebastian's approval
+## What's pending — Phase 3 item 6 (Edit existing reservation) complete; P3-7 (Dashboard rebuild) is next, gated on Sebastian's approval
 
-**C6 P3-5 (No-show with undo) shipped this session.** Schema additions + backend endpoint + popup wiring + bundled label-prefix fix.
+**C6 P3-6 (Edit existing reservation) shipped this session.** Backend conflict-check + frontend inline edit mode.
+
+Backend (`server/src/routes/restaurantPlatform.routes.js`):
+- `PUT /api/restaurant/reservations/:id` extended with conflict detection per §4.1. When `time` or `date` changes on a reservation that has a `tableId`, the endpoint fetches the reservation's current values, computes the new window, and queries for an overlapping CONFIRMED/PENDING/AUTO_CONFIRMED reservation on the same table at that date excluding the current row. If a conflict exists → 409 `{ error: 'table-conflict', tableLabel, conflictTime }`. No conflict OR no time/date change → proceeds with the existing updateMany path. Phase 1's "trust model" comment is now superseded — §4.1 mandates the check.
+
+Frontend (`apps/restaurant/components/ReservationDetailPopup.jsx`):
+- New popup-internal edit mode. `handleAction('edit')` intercepted (same pattern as P3-5's no-show); flips `editMode` true, populates `editForm` from `current`, fetches `/api/restaurant/profile` once for service periods.
+- Render: when `editMode === true`, popup body shows form (Date / Time / Party stepper / Phone / Special Requests). When false, the pre-P3-6 view mode renders unchanged.
+- Availability hint: debounced 300ms call to `/api/restaurant/availability` mirroring QuickAdd's §3.3 pattern. Same three-tier copy (exact / last-one / combining needed).
+- Closed-hours warning: same Yes/No ack pattern as QuickAdd, adapted for edit semantics — No just dismisses the warning (doesn't close the whole popup). Save remains disabled while the warning is unacked.
+- Pending-sync save per §4.2: spinner on Save button, 10s timeout fallback, on 200 popup updates `current` and exits edit mode + success toast, on 409 `table-conflict` shows the specific `edit.error.tableConflict` error inline.
+- Diff send: payload contains only fields whose value differs from `current` — saves the network round-trip when nothing changed (exits edit mode silently).
+- guestName + tableId + status NOT editable inline per spec — guestName deferred to admin, tableId via Reassign-table action, status via state-machine transitions.
+
+i18n keys added (`edit.{title,field.*,button.*,toast.saved,warning.*,error.*}`) in both ro and en.
+
+End-to-end smoke (all four §3.9 paths verified):
+- A. Happy: PUT edit changes time 18:00→19:00 + adds special requests → 200, time + endTime recomputed, specialRequests stored.
+- B. State-machine: greppped `actionsForStatus` — `'edit'` is NOT in the array for CANCELLED (or COMPLETED, NO_SHOW). Frontend never renders Edit for view-only states. (Verification: regex check returned false.)
+- C. Conflict: PUT edit moves reservation A's time onto reservation B's slot on the same table → 409 `{ error: 'table-conflict', tableLabel: 'T13', conflictTime: '21:30' }`. Frontend renders `edit.error.tableConflict` inline.
+- D. Cancel: pure frontend behavior — `exitEditMode()` returns the popup to view mode without writing. No API call.
+- All four dev servers serve 200; new popup edit-mode code zero hardcoded English; C4 §5a 7/7 ✓; C1 dispatcher 12/12 ✓.
+
+**C6 P3-5 (No-show with undo) shipped earlier this session.** Schema additions + backend endpoint + popup wiring + bundled label-prefix fix.
 
 Schema (additive, two `db:push` runs, no `--accept-data-loss`):
 - `Reservation.noShowPriorStatus String?` — captures the reservation's prior status (typically AUTO_CONFIRMED/CONFIRMED) before the no-show transition.
@@ -223,25 +246,24 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 P3-6 (Edit existing reservation) is the next code work.** Per waiter_ux_strategy.md §3.9: from the ReservationDetailPopup, an Edit button opens an inline edit mode (or reuses the Quick Add form pre-populated with current values). Editable fields: Date, Time, Party Size, Phone, Special Requests, assigned Table. Save uses pending-sync per §4.2. Backend `PUT /api/restaurant/reservations/:id` already exists from C6 Phase 1; needs frontend wiring. Pattern: same popup-internal handling as P3-5 (intercept action='edit', show edit form, save, close + success toast).
+**C6 P3-7 (Dashboard rebuild as command center) is the next code work.** Per waiter_ux_strategy.md §3.8: replace the three-numeric-tile layout on `/dashboard` with three operational zones — NOW (currently-active reservations + occupied tables), NEXT (upcoming 8 reservations chronological with "Show more" → 24), SEARCH (guest name / phone / email autocomplete with inline action buttons on each result). Tablet width 768–1280px primary target. Backend GET `/api/restaurant/dashboard/summary` already exists from C6 Phase 1; guest search reuses or extends the existing `/api/restaurant/reservations/search` endpoint. New components: NowZone.jsx, NextZone.jsx, SearchZone.jsx (per §3.8 WHERE). The pending-confirmation badge stays in the global header per §3.6 (NOT in Dashboard chrome) — Dashboard's stat tiles can show the number but the alert badge is global. Preserve existing routes + auth gates per §3.8 ("rewrite, not re-architecture").
+
+Per the new no-individual-QA-gate policy: ship P3-7 with internal smoke verification; comprehensive QA happens at end-of-C6.
 
 Remaining Phase 3 sequence (fastest-first):
 1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped earlier this session.
 2. ~~Pending reservation alert (3.6)~~ ✓ shipped earlier this session.
 3. ~~Live floor overlay (3.7)~~ ✓ shipped earlier this session.
 4. ~~Walk-in fast seating (3.4)~~ ✓ shipped earlier this session.
-5. ~~No-show with undo (3.5)~~ ✓ shipped this session.
-6. **Edit existing reservation (3.9)** — next.
-7. Dashboard rebuild (3.8) — largest, last.
+5. ~~No-show with undo (3.5)~~ ✓ shipped earlier this session.
+6. ~~Edit existing reservation (3.9)~~ ✓ shipped this session.
+7. **Dashboard rebuild (3.8)** — next, largest item in Phase 3.
 8. Calendar improvements (3.10).
 9. Special request badges + action subtext + late-arrival display (3.11 / 3.12 / 3.13).
 
-Each Phase 3 item is its own commit per §8 Phase 4 (per-commit verification including viewport screenshots at 375/768/1440).
-
 **Resume sequence (in order):**
-1. Sebastian Cowork-QAs the no-show + undo flow at 375/768/1440: mark no-show from popup, undo from toast within 10s, race scenario (mark no-show → seat walk-in → tap undo → labeled-error toast).
-2. Sebastian gives explicit approval to begin C6 P3-6 (Edit existing reservation).
-3. Phase 3 items 6-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian gives explicit approval to begin C6 P3-7 (Dashboard rebuild).
+2. Phase 3 items 7-9 (one commit each, internal smoke only) → Phase 5 (end-to-end shift QA — comprehensive Cowork verification at end-of-C6) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.
