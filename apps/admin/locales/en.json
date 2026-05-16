@@ -1,0 +1,23 @@
+{
+  "common": {
+    "appName": "ApRez Admin",
+    "platformTitle": "ApRez Admin Portal",
+    "loading": "Loading…",
+    "logout": "Logout",
+    "language": "Language",
+    "reconnecting": "Reconnecting…"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "restaurants": "Restaurants",
+    "team": "Team"
+  },
+  "dashboard": {
+    "title": "Dashboard Overview",
+    "subtitle": "Welcome to ApRez Admin Panel",
+    "totalRestaurants": "Total Restaurants",
+    "livePending": "Pending reservations (live since this session)",
+    "languageSectionTitle": "Language",
+    "languageSectionHint": "Interface language for this browser."
+  }
+}

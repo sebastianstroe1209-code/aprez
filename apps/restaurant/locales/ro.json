@@ -1,0 +1,38 @@
+{
+  "common": {
+    "appName": "ApRez",
+    "platformTitle": "Platforma ApRez pentru restaurante",
+    "loading": "Se încarcă…",
+    "logout": "Deconectare",
+    "language": "Limbă",
+    "reconnecting": "Se reconectează…"
+  },
+  "nav": {
+    "dashboard": "Panou",
+    "live": "Plan etaj LIVE",
+    "reservations": "Rezervări",
+    "calendar": "Calendar",
+    "settings": "Setări"
+  },
+  "reservations": {
+    "title": "Rezervări",
+    "createButton": "Creează rezervare manuală",
+    "tabAll": "Toate",
+    "tabPending": "În așteptare",
+    "tabToday": "Astăzi"
+  },
+  "actions": {
+    "confirm": "Confirmă",
+    "reject": "Respinge",
+    "seat": "Așază",
+    "cancel": "Anulează",
+    "complete": "Finalizează",
+    "pickTable": "Alege masa",
+    "save": "Salvează"
+  },
+  "settings": {
+    "title": "Setări",
+    "languageSectionTitle": "Limbă",
+    "languageSectionHint": "Limba interfeței pentru acest browser."
+  }
+}

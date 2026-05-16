@@ -1,0 +1,23 @@
+{
+  "common": {
+    "appName": "ApRez Admin",
+    "platformTitle": "Portal admin ApRez",
+    "loading": "Se încarcă…",
+    "logout": "Deconectare",
+    "language": "Limbă",
+    "reconnecting": "Se reconectează…"
+  },
+  "nav": {
+    "dashboard": "Panou",
+    "restaurants": "Restaurante",
+    "team": "Echipă"
+  },
+  "dashboard": {
+    "title": "Vedere panou",
+    "subtitle": "Bun venit în panoul administrativ ApRez",
+    "totalRestaurants": "Restaurante înregistrate",
+    "livePending": "Rezervări în așteptare (live de la deschiderea sesiunii)",
+    "languageSectionTitle": "Limbă",
+    "languageSectionHint": "Limba interfeței pentru acest browser."
+  }
+}

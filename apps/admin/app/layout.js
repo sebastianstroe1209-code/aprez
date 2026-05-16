@@ -1,5 +1,6 @@
 import { Inter } from 'next/font/google'
 import './globals.css'
+import I18nProvider from '../lib/i18n/I18nProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -10,9 +11,9 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="ro">
       <body className={inter.className}>
-        {children}
+        <I18nProvider>{children}</I18nProvider>
       </body>
     </html>
   )

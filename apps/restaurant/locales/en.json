@@ -1,0 +1,38 @@
+{
+  "common": {
+    "appName": "ApRez",
+    "platformTitle": "ApRez Restaurant Platform",
+    "loading": "Loading…",
+    "logout": "Logout",
+    "language": "Language",
+    "reconnecting": "Reconnecting…"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "live": "Live Floor Plan",
+    "reservations": "Reservations",
+    "calendar": "Calendar",
+    "settings": "Settings"
+  },
+  "reservations": {
+    "title": "Reservations",
+    "createButton": "Create Manual Reservation",
+    "tabAll": "All",
+    "tabPending": "Pending",
+    "tabToday": "Today"
+  },
+  "actions": {
+    "confirm": "Confirm",
+    "reject": "Reject",
+    "seat": "Seat",
+    "cancel": "Cancel",
+    "complete": "Complete",
+    "pickTable": "Pick table",
+    "save": "Save"
+  },
+  "settings": {
+    "title": "Settings",
+    "languageSectionTitle": "Language",
+    "languageSectionHint": "Interface language for this browser."
+  }
+}

@@ -5,9 +5,11 @@
 // Spec: memory/waiter_ux_strategy.md §4.4.
 
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { getSocket, subscribeStatus } from '../lib/socket'
 
 export default function ReconnectingBanner() {
+  const t = useTranslations()
   const [show, setShow] = useState(false)
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function ReconnectingBanner() {
   if (!show) return null
   return (
     <div className="fixed top-0 left-64 right-0 z-50 bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2 text-sm font-medium text-center">
-      Reconnecting…
+      {t('common.reconnecting')}
     </div>
   )
 }

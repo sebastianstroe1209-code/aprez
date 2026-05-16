@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C4 (Socket.IO frontend wiring) COMPLETE and synthetic-smoke verified — backend emits the §5a event set, JWT handshake auto-joins rooms, all three frontends subscribe + show a Reconnecting banner. Schema unchanged. Tier C6 strategy was locked earlier this session in a separate commit. C5 (i18n scaffold) is the next code tier; C6 is the gate after C5.**
+**Last session: 2026-05-16. Tier C5 (i18n scaffold) COMPLETE and smoke-verified — next-intl on restaurant+admin (localStorage persistence, Europe/Bucharest timeZone), react-i18next on mobile (SecureStore persistence, backend sync via PUT /users/me/language, login seeds from User.preferredLanguage). Sample keys round-trip end-to-end through the language toggle in each app. Full string coverage is incremental — picked up as C6 work touches each component per waiter_ux_strategy.md §4.6. Schema unchanged. C6 (Waiter UX Critical Path) is the next code tier, gated on Sebastian's approval.**
 
 ## Where we left off
 
@@ -46,11 +46,13 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Tier C4 complete; C5 (i18n scaffold) is next, gated on Sebastian's approval
+## What's pending — Tier C5 complete; C6 (Waiter UX) is next, gated on Sebastian's approval
 
-**Tier C4 (Socket.IO frontend wiring) shipped this session.** Backend now emits the §5a event set (`reservation:created`, `reservation:pending-created`, `reservation:updated`, `reservation:cancelled`, `table:status-changed`, `walkin:created`, `walkin:ended`). JWT handshake middleware auto-joins `restaurant:{id}`, `user:{id}`, or `admin:global` based on role. Legacy `table:statusChanged` was renamed to kebab-case `table:status-changed`; the old `join:restaurant` / `join:user` self-declare handlers remain for back-compat with dev/test scripts. All three frontends installed `socket.io-client@^4.8.0` and have shared `lib/socket.js` + `useSocketRefetch` + `ReconnectingBanner` (banner appears after socket down >2s, clears on reconnect+refetch per §4.4). Synthetic smoke at `server/.smoke/c4-socket-smoke.js` verifies the full event surface — all 7 events fired end-to-end + JWT auth accepts/rejects correctly + C1 dispatcher 12-event regression still 12/12. Source-grep for `socket:stub`/`TODO socket`/`TODO realtime` returned zero.
+**Tier C5 (i18n scaffold) shipped this session.** Plumbing in place across all three frontends; sample keys round-trip via the language toggle. Per waiter_ux_strategy.md §4.6, every new C6 string MUST go through i18n keys; older hardcoded strings get migrated as their components are touched by C6 work. Hardcoded-English remnant counts (proxy via grep, not exact): restaurant ~18, admin ~15, mobile ~25 — that's the incremental backlog. Pre-existing bug in `PUT /api/users/me/language` (referenced non-existent `language` column instead of `preferredLanguage`) was fixed because the mobile toggle calls it. URL-based locale routing (`/ro/*`, `/en/*`) deferred — would require moving every route under `app/[locale]/`, out of scaffold scope.
 
-**Browser/Cowork verification still pending** for: two-tab cross-update visual confirmation, kill-backend reconnect-banner appearance, page-focus refetch network trace, mobile real-device update on the diner's My Reservations screen. The synthetic socket smoke confirms the events arrive; Cowork-driven browser walks confirm the UI patches them through.
+**Tier C4 (Socket.IO frontend wiring) shipped earlier this session.** Backend emits the §5a event set; JWT handshake auto-joins rooms; all three frontends subscribe + show a Reconnecting banner per §4.4. Smoke at `server/.smoke/c4-socket-smoke.js` verifies 7/7 events end-to-end.
+
+**Browser/Cowork verification still pending** from C4: two-tab cross-update, kill-backend reconnect banner, page-focus refetch network trace, mobile real-device update. C5 adds: confirm the language toggle flips strings immediately in each app without reload, and confirm the mobile toggle persists across app restart (SecureStore round-trip).
 
 **Tier C6 (Waiter UX Critical Path) is LOCKED** via `memory/waiter_ux_strategy.md` (earlier commit this session). It is the binding reference for all restaurant-platform UI work.
 
@@ -67,11 +69,11 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C5 (i18n scaffold) is the next code work.** Awaiting Sebastian's explicit approval. Per §4.6 of the strategy doc, C5 lands the i18n key structure (`next-intl` for restaurant + admin, `react-i18next` for mobile) with RO primary + EN fallback. Once keys exist, C6 can begin using them even if RO translations are partially filled — C5 can finish translations in parallel with early C6 work.
+**C6 (Waiter UX Critical Path) is the next code work.** Awaiting Sebastian's explicit approval. Begin with §8 Phase 1 (lock data contracts: endpoints, payloads, performance budgets) as a single commit, then Phase 2 (shared infrastructure components) one commit per piece. The §5a Socket.IO contract (already implemented) is the freshness layer C6's UI subscribes to.
 
 **Resume sequence (in order):**
-1. Sebastian gives explicit approval to begin Tier C5.
-2. C5 → C6 → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian gives explicit approval to begin Tier C6 Phase 1.
+2. C6 (phased) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.

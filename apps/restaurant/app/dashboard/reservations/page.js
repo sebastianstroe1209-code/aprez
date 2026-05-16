@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { apiGet, apiPut, apiPost } from '../../../lib/api'
 import { formatDate } from '../../../lib/format'
 import { subscribe } from '../../../lib/socket'
@@ -18,6 +19,7 @@ const statusBadgeColor = {
 
 export default function ReservationsPage() {
   const router = useRouter()
+  const t = useTranslations()
   const [tab, setTab] = useState('all') // 'all', 'pending', 'today'
   const [reservations, setReservations] = useState([])
   const [loading, setLoading] = useState(true)
@@ -216,12 +218,12 @@ export default function ReservationsPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Reservations</h1>
+        <h1 className="text-3xl font-bold">{t('reservations.title')}</h1>
         <button
           onClick={() => setShowCreateModal(true)}
           className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition-colors"
         >
-          Create Manual Reservation
+          {t('reservations.createButton')}
         </button>
       </div>
 
@@ -251,20 +253,20 @@ export default function ReservationsPage() {
       <div className="mb-6 bg-white rounded-lg shadow">
         <div className="flex border-b">
           {[
-            { id: 'all', label: 'All' },
-            { id: 'pending', label: 'Pending' },
-            { id: 'today', label: 'Today' },
-          ].map((t) => (
+            { id: 'all', labelKey: 'reservations.tabAll' },
+            { id: 'pending', labelKey: 'reservations.tabPending' },
+            { id: 'today', labelKey: 'reservations.tabToday' },
+          ].map((tabDef) => (
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
+              key={tabDef.id}
+              onClick={() => setTab(tabDef.id)}
               className={`px-6 py-3 font-medium transition-colors ${
-                tab === t.id
+                tab === tabDef.id
                   ? 'border-b-2 border-primary text-primary'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              {t.label}
+              {t(tabDef.labelKey)}
             </button>
           ))}
         </div>

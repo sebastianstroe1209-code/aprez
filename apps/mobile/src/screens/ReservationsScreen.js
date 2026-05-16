@@ -15,6 +15,7 @@ import { Colors } from '../lib/colors';
 import api, { getErrorMessage } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useFocusEffect } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { subscribe, subscribeStatus } from '../lib/socket';
 
 const STATUS_CONFIG = {
@@ -29,6 +30,7 @@ const STATUS_CONFIG = {
 
 
 export default function ReservationsScreen({ navigation }) {
+  const { t } = useTranslation();
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -186,11 +188,11 @@ export default function ReservationsScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       {socketDisconnected && (
         <View style={styles.reconnectBanner}>
-          <Text style={styles.reconnectBannerText}>Reconnecting…</Text>
+          <Text style={styles.reconnectBannerText}>{t('reservations.reconnecting')}</Text>
         </View>
       )}
       <View style={styles.header}>
-        <Text style={styles.title}>My Reservations</Text>
+        <Text style={styles.title}>{t('reservations.title')}</Text>
       </View>
 
       {/* Tabs */}

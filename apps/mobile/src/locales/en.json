@@ -1,0 +1,26 @@
+{
+  "common": {
+    "appName": "ApRez",
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "save": "Save",
+    "language": "Language"
+  },
+  "tabs": {
+    "home": "Home",
+    "reservations": "Reservations",
+    "favorites": "Favorites",
+    "profile": "Profile"
+  },
+  "reservations": {
+    "title": "My Reservations",
+    "tabUpcoming": "Upcoming",
+    "tabPast": "Past",
+    "reconnecting": "Reconnecting…"
+  },
+  "profile": {
+    "title": "Profile",
+    "languageSectionTitle": "Language",
+    "languageSectionHint": "App and notifications language."
+  }
+}

@@ -1,13 +1,17 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import { apiGet, apiPut, apiPost, apiDelete } from '../../../lib/api'
 import { formatDate } from '../../../lib/format'
+import { useAppLocale } from '../../../lib/i18n/I18nProvider'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export default function SettingsPage() {
+  const t = useTranslations()
+  const { locale, setLocale } = useAppLocale()
   const [profile, setProfile] = useState({
     nameEn: '',
     nameRo: '',
@@ -122,12 +126,33 @@ export default function SettingsPage() {
   }
 
   if (loading) {
-    return <div className="text-center py-12">Loading settings...</div>
+    return <div className="text-center py-12">{t('common.loading')}</div>
   }
 
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-6">Settings</h1>
+      <h1 className="text-3xl font-bold mb-6">{t('settings.title')}</h1>
+
+      {/* Language Toggle (C5 scaffold) */}
+      <div className="mb-8 bg-white rounded-lg shadow p-6">
+        <h2 className="text-2xl font-bold mb-2">{t('settings.languageSectionTitle')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings.languageSectionHint')}</p>
+        <div className="flex gap-2">
+          {['ro', 'en'].map((code) => (
+            <button
+              key={code}
+              onClick={() => setLocale(code)}
+              className={`px-4 py-2 rounded font-medium transition-colors ${
+                locale === code
+                  ? 'bg-primary text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {code.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {error && (
         <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">

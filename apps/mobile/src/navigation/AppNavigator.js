@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Colors } from '../lib/colors';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,6 +23,7 @@ const AppStackNav = createNativeStackNavigator();
 const TabNav = createBottomTabNavigator();
 
 function HomeTabs() {
+  const { t } = useTranslation();
   return (
     <TabNav.Navigator
       screenOptions={{
@@ -42,6 +44,7 @@ function HomeTabs() {
         name="Home"
         component={HomeScreen}
         options={{
+          tabBarLabel: t('tabs.home'),
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons name={focused ? 'restaurant' : 'restaurant-outline'} size={size} color={color} />
           ),
@@ -51,6 +54,7 @@ function HomeTabs() {
         name="Reservations"
         component={ReservationsScreen}
         options={{
+          tabBarLabel: t('tabs.reservations'),
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={color} />
           ),
@@ -60,6 +64,7 @@ function HomeTabs() {
         name="Favorites"
         component={FavoritesScreen}
         options={{
+          tabBarLabel: t('tabs.favorites'),
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons name={focused ? 'heart' : 'heart-outline'} size={size} color={color} />
           ),
@@ -69,6 +74,7 @@ function HomeTabs() {
         name="Profile"
         component={ProfileScreen}
         options={{
+          tabBarLabel: t('tabs.profile'),
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
           ),

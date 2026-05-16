@@ -3,21 +3,23 @@
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import { apiGet } from '../../lib/api'
 import { getSocket, resetSocket } from '../../lib/socket'
 import ReconnectingBanner from '../../components/ReconnectingBanner'
 
 const navigationItems = [
-  { name: 'Dashboard', href: '/dashboard', icon: '📊' },
-  { name: 'Live Floor Plan', href: '/dashboard/live', icon: '📍' },
-  { name: 'Reservations', href: '/dashboard/reservations', icon: '📅' },
-  { name: 'Calendar', href: '/dashboard/calendar', icon: '📆' },
-  { name: 'Settings', href: '/dashboard/settings', icon: '⚙️' },
+  { key: 'dashboard', href: '/dashboard', icon: '📊' },
+  { key: 'live', href: '/dashboard/live', icon: '📍' },
+  { key: 'reservations', href: '/dashboard/reservations', icon: '📅' },
+  { key: 'calendar', href: '/dashboard/calendar', icon: '📆' },
+  { key: 'settings', href: '/dashboard/settings', icon: '⚙️' },
 ]
 
 export default function DashboardLayout({ children }) {
   const router = useRouter()
   const pathname = usePathname()
+  const t = useTranslations()
   const [isMounted, setIsMounted] = useState(false)
   const [restaurantName, setRestaurantName] = useState('Restaurant')
 
@@ -44,7 +46,7 @@ export default function DashboardLayout({ children }) {
   }
 
   if (!isMounted) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+    return <div className="flex items-center justify-center min-h-screen">{t('common.loading')}</div>
   }
 
   return (
@@ -52,7 +54,7 @@ export default function DashboardLayout({ children }) {
       {/* Sidebar */}
       <aside className="w-64 bg-sidebar text-white p-6 fixed left-0 top-0 bottom-0 overflow-y-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold">ApRez</h1>
+          <h1 className="text-2xl font-bold">{t('common.appName')}</h1>
           <p className="text-sm text-gray-400 mt-2">{restaurantName}</p>
         </div>
 
@@ -72,7 +74,7 @@ export default function DashboardLayout({ children }) {
                 }`}
               >
                 <span className="mr-2">{item.icon}</span>
-                {item.name}
+                {t(`nav.${item.key}`)}
               </Link>
             )
           })}
@@ -83,7 +85,7 @@ export default function DashboardLayout({ children }) {
             onClick={handleLogout}
             className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors text-sm font-medium"
           >
-            Logout
+            {t('common.logout')}
           </button>
         </div>
       </aside>
@@ -93,7 +95,7 @@ export default function DashboardLayout({ children }) {
         <ReconnectingBanner />
         {/* Top Bar */}
         <header className="bg-white border-b border-gray-200 px-8 py-6 sticky top-0 shadow-sm z-10">
-          <h2 className="text-2xl font-bold text-gray-800">ApRez Restaurant Platform</h2>
+          <h2 className="text-2xl font-bold text-gray-800">{t('common.platformTitle')}</h2>
         </header>
 
         {/* Page Content */}

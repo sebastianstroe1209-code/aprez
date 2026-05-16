@@ -11,11 +11,15 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Colors } from '../lib/colors';
 import { useAuth } from '../contexts/AuthContext';
+import { setLocale as setI18nLocale, getCurrentLocale } from '../lib/i18n';
 
 export default function ProfileScreen() {
+  const { t, i18n } = useTranslation();
   const { user, logout, updateProfile, error, setError } = useAuth();
+  const currentLocale = i18n.language || getCurrentLocale();
   const [editing, setEditing] = useState(false);
   const [firstName, setFirstName] = useState(user?.firstName || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
@@ -45,7 +49,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Profile</Text>
+      <Text style={styles.title}>{t('profile.title')}</Text>
 
       {/* Avatar */}
       <View style={styles.avatarSection}>
@@ -165,12 +169,31 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.settingRow}>
-          <Ionicons name="language-outline" size={20} color={Colors.text} />
-          <Text style={styles.settingText}>Language</Text>
-          <Text style={styles.settingValue}>English</Text>
-          <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
-        </TouchableOpacity>
+        {/* Language toggle (C5 scaffold) — replaces the placeholder row. */}
+        <View style={styles.langSection}>
+          <View style={styles.settingRow}>
+            <Ionicons name="language-outline" size={20} color={Colors.text} />
+            <Text style={styles.settingText}>{t('profile.languageSectionTitle')}</Text>
+          </View>
+          <Text style={styles.langHint}>{t('profile.languageSectionHint')}</Text>
+          <View style={styles.langButtons}>
+            {['ro', 'en'].map((code) => (
+              <TouchableOpacity
+                key={code}
+                style={[
+                  styles.langButton,
+                  currentLocale === code && styles.langButtonActive,
+                ]}
+                onPress={() => setI18nLocale(code)}
+              >
+                <Text style={[
+                  styles.langButtonText,
+                  currentLocale === code && styles.langButtonTextActive,
+                ]}>{code.toUpperCase()}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
         <TouchableOpacity style={styles.settingRow}>
           <Ionicons name="shield-checkmark-outline" size={20} color={Colors.text} />
@@ -256,6 +279,13 @@ const styles = StyleSheet.create({
   },
   settingText: { flex: 1, fontSize: 15, color: Colors.text },
   settingValue: { fontSize: 14, color: Colors.textSecondary },
+  langSection: { borderBottomWidth: 1, borderBottomColor: Colors.borderLight, paddingBottom: 12 },
+  langHint: { fontSize: 12, color: Colors.textSecondary, paddingHorizontal: 32, paddingBottom: 8 },
+  langButtons: { flexDirection: 'row', gap: 8, paddingHorizontal: 32, paddingBottom: 4 },
+  langButton: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: Colors.borderLight, minWidth: 60, alignItems: 'center' },
+  langButtonActive: { backgroundColor: Colors.primary },
+  langButtonText: { fontSize: 13, fontWeight: '600', color: Colors.text },
+  langButtonTextActive: { color: '#fff' },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',

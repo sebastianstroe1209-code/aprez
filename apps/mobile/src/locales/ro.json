@@ -1,0 +1,26 @@
+{
+  "common": {
+    "appName": "ApRez",
+    "loading": "Se încarcă…",
+    "cancel": "Anulează",
+    "save": "Salvează",
+    "language": "Limbă"
+  },
+  "tabs": {
+    "home": "Acasă",
+    "reservations": "Rezervări",
+    "favorites": "Favorite",
+    "profile": "Profil"
+  },
+  "reservations": {
+    "title": "Rezervările mele",
+    "tabUpcoming": "Următoare",
+    "tabPast": "Anterioare",
+    "reconnecting": "Se reconectează…"
+  },
+  "profile": {
+    "title": "Profil",
+    "languageSectionTitle": "Limbă",
+    "languageSectionHint": "Limba aplicației și a notificărilor."
+  }
+}

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import api, { getErrorMessage } from '../lib/api';
 import { getSocket, resetSocket } from '../lib/socket';
+import { setLocale as setI18nLocale } from '../lib/i18n';
 
 const AuthContext = createContext(null);
 
@@ -24,6 +25,13 @@ export function AuthProvider({ children }) {
         // C4: spin up the socket once we know the user is authenticated so
         // §5a events arrive on user:{id}.
         getSocket().catch(() => {});
+        // C5: seed the i18n locale from server's preferredLanguage so the
+        // mobile app matches what the dispatcher uses for notification
+        // templates. Skip the backend round-trip — the server already
+        // authoritative.
+        if (res.data?.preferredLanguage) {
+          setI18nLocale(res.data.preferredLanguage, { syncBackend: false }).catch(() => {});
+        }
       }
     } catch (e) {
       await SecureStore.deleteItemAsync('userToken').catch(() => {});

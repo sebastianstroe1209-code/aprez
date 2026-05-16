@@ -29,7 +29,7 @@ router.get('/me', authenticateUser, async (req, res, next) => {
         phone: true,
         latitude: true,
         longitude: true,
-        language: true,
+        preferredLanguage: true,
         expoPushToken: true,
         createdAt: true,
         updatedAt: true,
@@ -139,12 +139,17 @@ router.put(
       const userId = req.user.id;
       const { language } = req.body;
 
+      // Schema column is `preferredLanguage` (mapped to preferred_language).
+      // Body field stays `language` for ergonomics. Pre-C5 the route
+      // referenced `language` directly which would have thrown
+      // PrismaClientValidationError at first call — fixed as part of C5
+      // because the mobile + web language toggles depend on this endpoint.
       const updatedUser = await prisma.user.update({
         where: { id: userId },
-        data: { language },
+        data: { preferredLanguage: language },
         select: {
           id: true,
-          language: true,
+          preferredLanguage: true,
           updatedAt: true,
         },
       });
