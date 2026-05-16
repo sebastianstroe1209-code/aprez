@@ -183,5 +183,68 @@ check('I Legacy MODIFICATION_PENDING status: actionsForStatus',
   actionsForStatus(LEGACY_MOD_STATUS),
   ['confirm', 'reject']);
 
+// ============================================================
+// SCENARIO J — Tier I commit 2: merge !== null on a CONFIRMED reservation
+// appends 'unmerge' to the regular action set. Modification-pending
+// still wins (J' below).
+// ============================================================
+const MERGED_CONFIRMED = {
+  status: 'CONFIRMED',
+  tableId: 't9',
+  seatedAt: null,
+  table: { id: 't9', status: 'FREE' },
+  merge: { groupId: 'g1', isActive: true, summedSeatCount: 4, combinedLabel: 'T9+T10' },
+};
+check('J Merged CONFIRMED (with table): actionsForStatus',
+  actionsForStatus(MERGED_CONFIRMED),
+  ['edit', 'reassignTable', 'cancel', 'unmerge']);
+
+// ============================================================
+// SCENARIO J' — merge !== null but reservation is OCCUPIED: 'unmerge'
+// is suppressed (merge auto-deactivates on reservation completion;
+// staff shouldn't split mid-service).
+// ============================================================
+const MERGED_OCCUPIED = {
+  status: 'OCCUPIED',
+  tableId: 't9',
+  seatedAt: new Date(),
+  merge: { groupId: 'g1', isActive: true, summedSeatCount: 4, combinedLabel: 'T9+T10' },
+};
+check("J' Merged OCCUPIED: 'unmerge' suppressed",
+  actionsForStatus(MERGED_OCCUPIED),
+  ['complete', 'cancel']);
+
+// ============================================================
+// SCENARIO J'' — merge present but isActive=false (e.g., stale payload
+// after auto-deactivation). Should NOT include 'unmerge'.
+// ============================================================
+const STALE_MERGE = {
+  status: 'CONFIRMED',
+  tableId: 't9',
+  seatedAt: null,
+  table: { id: 't9', status: 'FREE' },
+  merge: { groupId: 'g1', isActive: false, summedSeatCount: 4, combinedLabel: 'T9+T10' },
+};
+check("J'' Stale merge (isActive=false): no 'unmerge'",
+  actionsForStatus(STALE_MERGE),
+  ['edit', 'reassignTable', 'cancel']);
+
+// ============================================================
+// SCENARIO J''' — both merge AND modification-pending on the same
+// reservation: modification-pending takes precedence (matches the
+// "staff must decide modification first" intent of E1).
+// ============================================================
+const MERGE_AND_MOD = {
+  status: 'CONFIRMED',
+  tableId: 't9',
+  seatedAt: null,
+  table: { id: 't9', status: 'FREE' },
+  merge: { groupId: 'g1', isActive: true, summedSeatCount: 4 },
+  modificationPending: { id: 'm1', status: 'PENDING' },
+};
+check("J''' Merge + modification-pending: mod wins",
+  actionsForStatus(MERGE_AND_MOD),
+  ['confirm', 'reject']);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

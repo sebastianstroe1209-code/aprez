@@ -188,6 +188,16 @@ No confirmation modal. Just action + undo toast.
 
 **EDGE CASES.** Long names truncated; full name visible in popup (3.1). Cards stay ≥80px tall.
 
+**TIER I MERGED-CARD RENDER CONTRACT (added 2026-05-16, I2).** Merge groups render via a two-pass strategy in `apps/restaurant/app/dashboard/live/page.js`:
+- **Pass 1a — rectangular merges**: when `members.length === rowSpan × colSpan`, render a single `<button>` spanning the bounding box via CSS `gridColumn: ${minC+1} / span ${colSpan}` + `gridRow: ${minR+1} / span ${rowSpan}`. Amber border + ★ + combined label.
+- **Pass 1b — L-shape fallback**: when the members don't fill their bounding box, render per-member cards (one button per member) with the same amber border. Combined label on the topmost-leftmost member only. Avoids claiming a phantom corner cell.
+- **Pass 2 — standalone + empty cells**: iterate the row-col grid as pre-Tier-I, but skip cells claimed in pass 1 (tracked in a `Set<"row,col">`). Standalone cards keep `min-h-[80px]` AND now also carry a small drag handle (⠿, ~14px) in the top-right corner.
+- **Drag handle convention**: native HTML5 `draggable` on the handle span only (not the parent button) with `stopPropagation` on the click/mousedown handlers so the existing tap-to-popup gesture stays clean. Visible only on tables that pass the merge-eligibility client-side check (non-OCCUPIED, non-OUT_OF_SERVICE, not in confirm-mode).
+- **80px height budget**: drag handle reuses the existing top-row chip space (next to seat count), so the budget holds. If future surface additions threaten it, defer them to the popup rather than crowding the card.
+- **No two active merges share a cell** — server enforces via the merge-window-conflict 409. Client trusts.
+
+Future tier work touching the Live page MUST preserve these invariants. The C6 popup-actions Node smoke covers the payload-keyed merge branch (scenarios J/J'/J''/J''') — extend that smoke rather than diverging.
+
 **VERIFICATION.** Cowork QA: load Live, confirm overlay on Red and Pink tables shows name + party + time. Trigger status change from another tab — confirm overlay updates.
 
 ### 3.8 Dashboard rebuild as command center (P0)

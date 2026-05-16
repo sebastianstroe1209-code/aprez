@@ -44,7 +44,33 @@
     "noshow": "Mark no-show",
     "save": "Save",
     "approveModification": "Approve change",
-    "rejectModification": "Reject change"
+    "rejectModification": "Reject change",
+    "unmerge": "Unmerge"
+  },
+  "merge": {
+    "handleTooltip": "Drag to merge with adjacent table",
+    "dropHere": "Drop to merge",
+    "merging": "Merging…",
+    "unmerging": "Unmerging…",
+    "mergedToast": "Merged: {label}",
+    "unmergedToast": "Tables unmerged",
+    "errorNotAdjacent": "Tables must be directly adjacent (no diagonals).",
+    "errorCap": "You can merge at most {max} tables.",
+    "errorOccupied": "Can't merge: {tableLabel} is {status}.",
+    "errorWindowConflict": "These tables are already merged elsewhere in this window.",
+    "errorReservationConflict": "Another reservation conflicts with this merge.",
+    "errorCrossSection": "Tables in different sections can't be merged.",
+    "errorGeneric": "Couldn't merge. Try again.",
+    "headerLabel": "{label} · {seats} {seats, plural, one {seat} other {seats}}",
+    "memberOf": "Part of {label}"
+  },
+  "override": {
+    "title": "Party doesn't fit this table",
+    "body": "Party of {partySize} doesn't fit {tableLabel} ({seatCount} {seatCount, plural, one {seat} other {seats}}). Assign anyway?",
+    "confirm": "Assign anyway",
+    "cancel": "Cancel",
+    "assigning": "Assigning…",
+    "successToast": "Assigned to {tableLabel} (over capacity)"
   },
   "settings": {
     "title": "Settings",

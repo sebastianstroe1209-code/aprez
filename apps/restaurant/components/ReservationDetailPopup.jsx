@@ -38,7 +38,7 @@ import MinLateBadge from './ui/MinLateBadge'
 // Pure framework-free helpers (CJS module). Extracted so the same logic
 // is consumed by the Node smoke at server/.smoke/c6-popup-actions-test.js —
 // single source of truth, no copy-paste divergence.
-import { actionsForStatus, hasPendingModification } from '../lib/popupActions'
+import { actionsForStatus, hasPendingModification, hasActiveMerge } from '../lib/popupActions'
 
 function isWithinAnyServicePeriod(profile, time) {
   const periods = profile?.servicePeriods || []
@@ -358,9 +358,31 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
     }
   }
 
+  // Tier I commit 2 — Unmerge action on a popup opened over a merged
+  // group. The merge metadata is threaded onto `current.merge` by the
+  // Live page when the spanning card is clicked. On success the
+  // table:unmerged socket event triggers a refresh elsewhere; we just
+  // toast + close here.
+  const handleUnmerge = async () => {
+    const groupId = current?.merge?.groupId
+    if (processingAction || !groupId) return
+    setProcessingAction('unmerge')
+    setActionError('')
+    try {
+      await apiPut(`/api/restaurant/merges/${groupId}/unmerge`)
+      showToast(t('merge.unmergedToast'), { variant: 'info' })
+      onClose()
+    } catch (err) {
+      setActionError(err?.message || 'Failed to unmerge')
+    } finally {
+      setProcessingAction(null)
+    }
+  }
+
   const handleAction = (actionType) => {
     if (actionType === 'noshow') return handleNoShow()
     if (actionType === 'edit') return enterEditMode()
+    if (actionType === 'unmerge') return handleUnmerge()
     // Modification-pending takes precedence on the confirm/reject pair.
     if (hasPendingModification(current)) {
       if (actionType === 'confirm') return handleApproveModification()
@@ -392,6 +414,22 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
                 />
               </h2>
               <div className="text-sm text-gray-500 mt-1">{t('popup.title')}</div>
+              {/* Tier I commit 2 — merge sub-header. Renders only when
+                  the popup is opened over a merged group. Shows the
+                  combined label + summed seat count derived from the
+                  /layout/live merge sub-object that the Live page
+                  threaded onto `current.merge`. */}
+              {hasActiveMerge(current) && (
+                <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 rounded bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-900">
+                  <span>★</span>
+                  <span>
+                    {t('merge.headerLabel', {
+                      label: current.merge.combinedLabel,
+                      seats: current.merge.summedSeatCount,
+                    })}
+                  </span>
+                </div>
+              )}
             </div>
             <button
               type="button"

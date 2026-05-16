@@ -3,14 +3,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { apiGet, apiPut } from '../../../lib/api'
+import { apiGet, apiPut, apiPost } from '../../../lib/api'
 import { formatTime } from '../../../lib/format'
 import { subscribe } from '../../../lib/socket'
 import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
 import WalkInActionSheet from '../../../components/WalkInActionSheet'
+import OverrideModal from '../../../components/OverrideModal'
 import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
 import MinLateBadge from '../../../components/ui/MinLateBadge'
+import { useToast } from '../../../components/ui/ToastProvider'
 
 // Statuses that, per memory/waiter_ux_strategy.md §3.7, carry an inline
 // guest+party+time overlay on the floor-plan card. Free + OOS render
@@ -30,10 +32,16 @@ const statusColors = {
   OUT_OF_SERVICE: { bg: 'bg-gray-50', border: 'border-table-out', text: 'text-gray-900', label: 'Out of Service' },
 }
 
+// Tier I commit 2 — cap surfaced for client-side pre-check of the 5th-
+// member drop so we don't waste a server round-trip when the UI knows
+// the merge would exceed the limit. Server still enforces.
+const MERGE_CAP = 4
+
 export default function LiveFloorPlanPage() {
   const t = useTranslations()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { show: showToast } = useToast()
   const confirmReservationId = searchParams.get('confirmReservationId')
 
   const [sections, setSections] = useState([])
@@ -64,6 +72,19 @@ export default function LiveFloorPlanPage() {
   const [walkInTable, setWalkInTable] = useState(null)
   const [walkInArrivingWarning, setWalkInArrivingWarning] = useState(null)
 
+  // Tier I commit 2 — drag-merge state. `dragSourceId` is the id of the
+  // table whose handle initiated the drag; `dragHover` is the cell the
+  // cursor is currently over (so we can tint valid targets without
+  // re-rendering the whole grid on every dragover). `overrideInfo`
+  // holds the 409 body when an assign-table call needs the override
+  // confirm modal. `mergeWorking` is set while a merge POST is in
+  // flight so we can disable subsequent drops.
+  const [dragSourceId, setDragSourceId] = useState(null)
+  const [dragHover, setDragHover] = useState(null) // { row, col }
+  const [overrideInfo, setOverrideInfo] = useState(null) // 409 body
+  const [pendingOverrideAssign, setPendingOverrideAssign] = useState(null) // { reservationId, tableId, isConfirmFlow }
+  const [mergeWorking, setMergeWorking] = useState(false)
+
   // Confirm-mode: when ?confirmReservationId=<id> is set, the page enters a
   // restricted picker mode. Eligible tables are highlighted; clicking one
   // assigns it to the reservation instead of opening the status modal.
@@ -74,6 +95,18 @@ export default function LiveFloorPlanPage() {
     loadLayout()
     const interval = setInterval(loadLayout, 30000) // Auto-refresh every 30 seconds
     return () => clearInterval(interval)
+  }, [])
+
+  // Tier I commit 2 — refetch the layout on merge/unmerge events so the
+  // spanning card appears/disappears across all open tabs. Reusing the
+  // same socket subscriber pattern as the C4 reservation events.
+  useEffect(() => {
+    const onMergeChange = () => loadLayout(true)
+    const unsubs = [
+      subscribe('table:merged', onMergeChange),
+      subscribe('table:unmerged', onMergeChange),
+    ]
+    return () => unsubs.forEach((fn) => fn())
   }, [])
 
   // C4 real-time table-status updates (§5a). Patch table in place rather than
@@ -133,18 +166,173 @@ export default function LiveFloorPlanPage() {
     router.push('/dashboard/live')
   }
 
-  const handleAssignFromConfirm = async (table) => {
+  // Tier I commit 2 — assign-from-confirm now wraps the apiPut and
+  // surfaces 409 `party-too-large` via the standalone OverrideModal
+  // (decision 7). On confirm the modal re-POSTs with force: true.
+  // Pre-Tier-I this alerted the raw error message; the modal gives
+  // staff a localized confirm flow per SPEC §8.2 override path.
+  const handleAssignFromConfirm = async (table, opts = {}) => {
     if (!confirmReservation) return
+    const force = !!opts.force
     try {
       const status = confirmReservation.status
       const path = status === 'PENDING'
         ? `/api/restaurant/reservations/${confirmReservation.id}/confirm`
         : `/api/restaurant/reservations/${confirmReservation.id}/assign-table`
-      await apiPut(path, { tableId: table.id })
+      await apiPut(path, { tableId: table.id, ...(force ? { force: true } : {}) })
+      // Success — close override modal if it was open, exit confirm mode.
+      setOverrideInfo(null)
+      setPendingOverrideAssign(null)
+      if (force) {
+        showToast(t('override.successToast', { tableLabel: table.tableNumber }), { variant: 'success' })
+      }
       router.push('/dashboard/live')
       loadLayout()
     } catch (err) {
+      // lib/api.js attaches the parsed payload on err.payload (added in
+      // Tier F2). Confirm endpoint returns 200 on success and won't go
+      // through this path for party-too-large; only /assign-table fires
+      // the structured 409.
+      const info = err?.payload?.error
+      if (info && info.code === 'party-too-large') {
+        setOverrideInfo(info)
+        setPendingOverrideAssign({ table })
+        return
+      }
       alert('Failed to assign table: ' + err.message)
+    }
+  }
+
+  // OverrideModal "Assign anyway" → re-call assign with force=true.
+  const handleOverrideConfirm = async () => {
+    if (!pendingOverrideAssign) return
+    await handleAssignFromConfirm(pendingOverrideAssign.table, { force: true })
+  }
+  const handleOverrideCancel = () => {
+    setOverrideInfo(null)
+    setPendingOverrideAssign(null)
+  }
+
+  // Tier I commit 2 — drag-merge handlers.
+  //
+  // Adjacency check: any member of the would-be group (source's merge
+  // members + target) must be within Manhattan-1 of another member.
+  // Conservative client-side check — server has the authoritative BFS.
+  const isManhattanAdjacent = (a, b) =>
+    Math.abs(a.gridRow - b.gridRow) + Math.abs(a.gridCol - b.gridCol) === 1
+
+  // Default time window for a drag-initiated merge: now → end of business
+  // day (23:59 Europe/Bucharest). When a reservation is in confirm-mode,
+  // we bind to that reservation instead (its time window + reservationId).
+  const defaultMergeWindow = () => {
+    const now = new Date()
+    const buchHm = now.toLocaleTimeString('en-GB', {
+      timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false,
+    })
+    const today = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
+    return { date: today, timeStart: buchHm, timeEnd: '23:59' }
+  }
+
+  const handleDragStart = (e, table) => {
+    setDragSourceId(table.id)
+    try { e.dataTransfer.setData('text/plain', table.id); e.dataTransfer.effectAllowed = 'move' } catch (_) {}
+  }
+  const handleDragEnd = () => {
+    setDragSourceId(null)
+    setDragHover(null)
+  }
+  const handleDragOver = (e, target) => {
+    if (!dragSourceId || !target?.table) return
+    const source = tables.find((t) => t.id === dragSourceId)
+    if (!source || source.id === target.table.id) return
+    if (!isManhattanAdjacent(source, target.table)) return
+    // 4-cap pre-check: if either side is already a merge, refuse
+    // when the union would exceed MERGE_CAP.
+    const sourceMerge = liveByTableId[source.id]?.merge
+    const targetMerge = liveByTableId[target.table.id]?.merge
+    const sourceCount = sourceMerge?.members?.length || 1
+    const targetCount = targetMerge?.members?.length || 1
+    const sameGroup = sourceMerge?.groupId && sourceMerge.groupId === targetMerge?.groupId
+    if (!sameGroup && sourceCount + targetCount > MERGE_CAP) return
+    if (sameGroup) return // already merged together → nothing to do
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragHover({ row: target.table.gridRow, col: target.table.gridCol })
+  }
+  const handleDragLeave = (e, target) => {
+    if (dragHover && target?.table &&
+      dragHover.row === target.table.gridRow && dragHover.col === target.table.gridCol) {
+      setDragHover(null)
+    }
+  }
+  const handleDrop = async (e, target) => {
+    e.preventDefault()
+    setDragHover(null)
+    const sourceId = e.dataTransfer.getData('text/plain') || dragSourceId
+    setDragSourceId(null)
+    if (!sourceId || !target?.table || sourceId === target.table.id || mergeWorking) return
+    const source = tables.find((t) => t.id === sourceId)
+    if (!source) return
+
+    // Re-validate client-side before sending.
+    if (!isManhattanAdjacent(source, target.table)) {
+      showToast(t('merge.errorNotAdjacent'), { variant: 'warning' })
+      return
+    }
+    const sourceMerge = liveByTableId[source.id]?.merge
+    const targetMerge = liveByTableId[target.table.id]?.merge
+    if (sourceMerge?.groupId && sourceMerge.groupId === targetMerge?.groupId) return
+
+    // Compose the union of (source's group members) + (target's group
+    // members) + standalone if either was solo.
+    const memberIds = new Set()
+    if (sourceMerge?.members?.length) sourceMerge.members.forEach((m) => memberIds.add(m.id))
+    else memberIds.add(source.id)
+    if (targetMerge?.members?.length) targetMerge.members.forEach((m) => memberIds.add(m.id))
+    else memberIds.add(target.table.id)
+    if (memberIds.size > MERGE_CAP) {
+      showToast(t('merge.errorCap', { max: MERGE_CAP }), { variant: 'warning' })
+      return
+    }
+
+    // Reservation-bound or pre-merge?
+    const tw = (() => {
+      if (confirmReservation?.time && confirmReservation?.endTime) {
+        const date = typeof confirmReservation.date === 'string'
+          ? confirmReservation.date.slice(0, 10)
+          : new Date(confirmReservation.date).toISOString().slice(0, 10)
+        return {
+          date,
+          timeStart: confirmReservation.time,
+          timeEnd: confirmReservation.endTime,
+          reservationId: confirmReservation.id,
+        }
+      }
+      return defaultMergeWindow()
+    })()
+
+    setMergeWorking(true)
+    try {
+      const res = await apiPost('/api/restaurant/tables/merge', {
+        tableIds: [...memberIds],
+        ...tw,
+      })
+      showToast(t('merge.mergedToast', { label: res.combinedLabel }), { variant: 'success' })
+      loadLayout(true)
+    } catch (err) {
+      const info = err?.payload?.error
+      const code = info?.code
+      if (code === 'not-adjacent') showToast(t('merge.errorNotAdjacent'), { variant: 'warning' })
+      else if (code === 'merge-cap-exceeded') showToast(t('merge.errorCap', { max: MERGE_CAP }), { variant: 'warning' })
+      else if (code === 'member-not-mergeable' && info?.blocked?.[0]) {
+        showToast(t('merge.errorOccupied', { tableLabel: info.blocked[0].tableNumber, status: info.blocked[0].status }), { variant: 'warning' })
+      }
+      else if (code === 'merge-window-conflict') showToast(t('merge.errorWindowConflict'), { variant: 'warning' })
+      else if (code === 'reservation-conflict') showToast(t('merge.errorReservationConflict'), { variant: 'warning' })
+      else if (code === 'cross-section-merge') showToast(t('merge.errorCrossSection'), { variant: 'warning' })
+      else showToast(t('merge.errorGeneric'), { variant: 'error' })
+    } finally {
+      setMergeWorking(false)
     }
   }
 
@@ -167,6 +355,10 @@ export default function LiveFloorPlanPage() {
           nextReservation: tbl.nextReservation || null,
           secondsLate: tbl.secondsLate ?? null,
           occupancyDurationMin: tbl.occupancyDurationMin ?? null,
+          // Tier I commit 2 — merge sub-object shipped on /layout/live
+          // in I1. Threaded into the per-table view here so the render
+          // path can compose merge cards in pass 1.
+          merge: tbl.merge || null,
         }
       }
       setSections(sectionsData)
@@ -261,6 +453,68 @@ export default function LiveFloorPlanPage() {
       // signal; pass it through too so the derivation works regardless
       // of which path supplied the data.
       secondsLate: overlay?.secondsLate ?? reservation.secondsLate ?? null,
+      // Tier I commit 2 — thread the merge sub-object so the popup
+      // shows the combined label/seats header AND so popupActions
+      // appends 'unmerge' to the action set.
+      merge: overlay?.merge || null,
+    })
+    setPopupOpen(true)
+  }
+
+  // Tier I commit 2 — click handler for a merged spanning card. Routes
+  // to the popup with whichever member's reservation is "live" (current
+  // > next > any member's currentReservation). Same shape the standalone
+  // handler produces, just with the merge sub-object threaded.
+  const handleMergeClick = (merge) => {
+    if (!merge?.members?.length) return
+    // Find the member whose overlay has a currentReservation; fall back
+    // to next; fall back to any member's tableNumber for a placeholder.
+    let pickedTable = null
+    let reservation = null
+    for (const m of merge.members) {
+      const ov = liveByTableId[m.id]
+      if (!ov) continue
+      if (ov.currentReservation) {
+        pickedTable = tables.find((t) => t.id === m.id) || m
+        reservation = ov.currentReservation
+        break
+      }
+    }
+    if (!reservation) {
+      for (const m of merge.members) {
+        const ov = liveByTableId[m.id]
+        if (ov?.nextReservation) {
+          pickedTable = tables.find((t) => t.id === m.id) || m
+          reservation = ov.nextReservation
+          break
+        }
+      }
+    }
+    // Empty-merge placeholder: synthesize a minimal reservation-shaped
+    // object so the popup can render header/Unmerge even when no booking
+    // owns the merge yet. Status set to AUTO_CONFIRMED so the default
+    // action set is empty + Unmerge gets appended.
+    if (!reservation) {
+      pickedTable = tables.find((t) => t.id === merge.members[0].id) || merge.members[0]
+      reservation = {
+        id: null,
+        guestName: merge.combinedLabel,
+        partySize: merge.summedSeatCount,
+        time: '', endTime: '',
+        status: 'AUTO_CONFIRMED',
+        seatedAt: null,
+      }
+    }
+    setPopupReservation({
+      ...reservation,
+      table: pickedTable ? {
+        id: pickedTable.id,
+        tableNumber: pickedTable.tableNumber,
+        seatCount: pickedTable.seatCount,
+        status: pickedTable.status,
+      } : null,
+      secondsLate: liveByTableId[pickedTable?.id]?.secondsLate ?? null,
+      merge,
     })
     setPopupOpen(true)
   }
@@ -366,93 +620,269 @@ export default function LiveFloorPlanPage() {
         </div>
       </div>
 
-      {/* Table Grid */}
+      {/* Table Grid — Tier I commit 2 two-pass render.
+          Pass 1 emits one spanning card per active merge group; pass 2
+          emits standalone tables + empty placeholders, skipping cells
+          claimed by a merge.
+
+          Layout invariants defended (per audit + decisions):
+          - Card min-height ≥80px on standalone + merged cards.
+          - Each cell owned by exactly one merge group or one standalone
+            table (server enforces; client trusts).
+          - 5th-member drop blocked client-side via onDragOver (server
+            still backs it).
+          - L-shaped merges (members ≠ rect bounding-box area) fall back
+            to per-member cards with shared border to avoid claiming a
+            phantom corner cell. Rect merges use gridColumn/gridRow span. */}
       <div className="bg-white rounded-lg shadow p-6">
         {tables.length === 0 ? (
           <div className="text-center py-12 text-gray-500">No tables in this section</div>
         ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${currentSection.gridColumns || 6}, minmax(0, 1fr))`,
-              gap: '8px',
-            }}
-          >
-            {Array.from({ length: currentSection.gridRows || 4 }).map((_, row) =>
-              Array.from({ length: currentSection.gridColumns || 6 }).map((_, col) => {
-                const table = tables.find(
-                  (t) => t.gridRow === row && t.gridCol === col
-                )
-                if (table) {
-                  const colors = statusColors[table.status] || statusColors.FREE
+          (() => {
+            // Build the merge-group registry for this section. Same
+            // groupId may appear under multiple member tables in
+            // liveByTableId — dedupe to avoid double-render.
+            const mergeGroups = new Map() // groupId → { merge, memberRecords[] }
+            const claimedCells = new Set() // `${row},${col}` covered by a rect merge
+            const sectionTableIds = new Set(tables.map((t) => t.id))
+            for (const tbl of tables) {
+              const merge = liveByTableId[tbl.id]?.merge
+              if (!merge || !merge.isActive) continue
+              if (!sectionTableIds.has(tbl.id)) continue
+              if (!mergeGroups.has(merge.groupId)) {
+                mergeGroups.set(merge.groupId, { merge, memberRecords: [] })
+              }
+              mergeGroups.get(merge.groupId).memberRecords.push(tbl)
+            }
+            // Compute bounding box + rect-ness per group.
+            for (const entry of mergeGroups.values()) {
+              const rs = entry.memberRecords.map((t) => t.gridRow)
+              const cs = entry.memberRecords.map((t) => t.gridCol)
+              const minR = Math.min(...rs)
+              const maxR = Math.max(...rs)
+              const minC = Math.min(...cs)
+              const maxC = Math.max(...cs)
+              const rowSpan = maxR - minR + 1
+              const colSpan = maxC - minC + 1
+              const area = rowSpan * colSpan
+              entry.bbox = { minR, minC, rowSpan, colSpan }
+              entry.isRect = area === entry.memberRecords.length
+              if (entry.isRect) {
+                for (let r = minR; r <= maxR; r++) {
+                  for (let c = minC; c <= maxC; c++) claimedCells.add(`${r},${c}`)
+                }
+              } else {
+                // L-shape fallback: claim only member cells; the per-member
+                // pass renders each one as a "linked" card.
+                for (const tbl of entry.memberRecords) claimedCells.add(`${tbl.gridRow},${tbl.gridCol}`)
+              }
+            }
+
+            return (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${currentSection.gridColumns || 6}, minmax(0, 1fr))`,
+                  gridAutoRows: 'minmax(80px, auto)',
+                  gap: '8px',
+                }}
+              >
+                {/* Pass 1: rect-merge spanning cards. CSS grid is 1-indexed. */}
+                {[...mergeGroups.values()].filter((e) => e.isRect).map((entry) => {
+                  const { merge, bbox } = entry
                   const inConfirmMode = !!confirmReservationId
-                  const isEligible = inConfirmMode && eligibleTableIds && eligibleTableIds.has(table.id)
+                  // For confirm-mode highlighting, treat the merge as
+                  // eligible if any member is in eligibleTableIds.
+                  const isEligible = inConfirmMode && eligibleTableIds &&
+                    entry.memberRecords.some((tbl) => eligibleTableIds.has(tbl.id))
                   const dimmed = inConfirmMode && !isEligible
-                  const overlay = liveByTableId[table.id]
-                  // ARRIVING_SOON shows the upcoming reservation;
-                  // OCCUPIED + AWAITING_GUEST show whoever is at (or due at)
-                  // the table now. Falls back across the two slots so a
-                  // mid-transition table doesn't lose its label.
-                  const overlayRes =
-                    table.status === 'ARRIVING_SOON'
-                      ? (overlay?.nextReservation || overlay?.currentReservation)
-                      : (overlay?.currentReservation || overlay?.nextReservation)
-                  const showOverlay = !inConfirmMode && OVERLAY_STATUSES.has(table.status) && overlayRes
+                  // Aggregate status — pick the most "active" one.
+                  // OCCUPIED > AWAITING_GUEST > ARRIVING_SOON > FREE.
+                  const rank = { OCCUPIED: 4, AWAITING_GUEST: 3, ARRIVING_SOON: 2, FREE: 1, OUT_OF_SERVICE: 0 }
+                  const dominantStatus = entry.memberRecords
+                    .map((t) => t.status)
+                    .reduce((a, b) => (rank[a] >= rank[b] ? a : b), 'FREE')
+                  const colors = statusColors[dominantStatus] || statusColors.FREE
                   return (
                     <button
-                      key={`${row}-${col}`}
+                      key={`merge-${merge.groupId}`}
                       onClick={() => {
                         if (inConfirmMode) {
-                          if (isEligible) handleAssignFromConfirm(table)
+                          if (isEligible) handleAssignFromConfirm(entry.memberRecords[0])
                         } else {
-                          handleTableClick(table)
+                          handleMergeClick(merge)
                         }
                       }}
                       disabled={dimmed}
-                      className={`border-2 rounded-lg p-2 transition-all min-h-[80px] flex flex-col items-stretch justify-between text-left ${
+                      style={{
+                        gridColumn: `${bbox.minC + 1} / span ${bbox.colSpan}`,
+                        gridRow: `${bbox.minR + 1} / span ${bbox.rowSpan}`,
+                      }}
+                      className={`relative border-2 border-amber-500 rounded-lg p-2 transition-all min-h-[80px] flex flex-col items-stretch justify-between text-left ring-2 ring-amber-300 ${
                         dimmed ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'
-                      } ${
-                        isEligible ? 'ring-4 ring-primary ring-offset-2' : ''
-                      } ${colors.bg} ${colors.border} ${colors.text}`}
+                      } ${colors.bg} ${colors.text}`}
+                      title={t('merge.headerLabel', { label: merge.combinedLabel, seats: merge.summedSeatCount })}
                     >
                       <div className="flex items-baseline justify-between gap-1">
-                        <span className="text-base font-bold leading-none">{table.tableNumber}</span>
-                        <span className="text-[10px] opacity-70 leading-none">{table.seatCount}</span>
+                        <span className="text-base font-bold leading-none text-amber-900">★ {merge.combinedLabel}</span>
+                        <span className="text-[10px] opacity-70 leading-none">{merge.summedSeatCount} seats</span>
                       </div>
-                      {showOverlay ? (
-                        <>
-                          <div className="text-xs font-semibold mt-1 leading-tight flex items-center gap-1 min-w-0">
-                            <span className="truncate">{truncateGuestName(overlayRes.guestName)}</span>
-                            {overlayRes.partySize != null && (
-                              <span className="opacity-75 shrink-0">{t('liveOverlay.party', { count: overlayRes.partySize })}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between gap-1 mt-0.5">
-                            <span className="text-[11px] opacity-80">{overlayRes.time || ''}</span>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <SpecialRequestsBadge
-                                hasSpecialRequests={overlayRes.hasSpecialRequests}
-                                className="text-sm"
-                              />
-                              <MinLateBadge secondsLate={overlay?.secondsLate} />
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-[10px] mt-1 opacity-75">{colors.label}</div>
-                      )}
+                      <div className="text-[10px] mt-1 opacity-75">{colors.label}</div>
                     </button>
                   )
-                }
-                return (
-                  <div
-                    key={`${row}-${col}`}
-                    className="border border-dashed border-gray-200 rounded-lg min-h-[80px]"
-                  />
-                )
-              })
-            )}
-          </div>
+                })}
+
+                {/* Pass 1b: L-shape fallback — per-member with shared border. */}
+                {[...mergeGroups.values()].filter((e) => !e.isRect).flatMap((entry) =>
+                  entry.memberRecords.map((tbl, idx) => {
+                    const colors = statusColors[tbl.status] || statusColors.FREE
+                    const inConfirmMode = !!confirmReservationId
+                    const isEligible = inConfirmMode && eligibleTableIds && eligibleTableIds.has(tbl.id)
+                    const dimmed = inConfirmMode && !isEligible
+                    return (
+                      <button
+                        key={`linked-${entry.merge.groupId}-${tbl.id}`}
+                        onClick={() => {
+                          if (inConfirmMode) {
+                            if (isEligible) handleAssignFromConfirm(tbl)
+                          } else {
+                            handleMergeClick(entry.merge)
+                          }
+                        }}
+                        disabled={dimmed}
+                        style={{
+                          gridColumn: `${tbl.gridCol + 1}`,
+                          gridRow: `${tbl.gridRow + 1}`,
+                        }}
+                        className={`relative border-2 border-amber-500 rounded-lg p-2 transition-all min-h-[80px] flex flex-col items-stretch justify-between text-left ring-2 ring-amber-300 ${
+                          dimmed ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'
+                        } ${colors.bg} ${colors.text}`}
+                        title={t('merge.memberOf', { label: entry.merge.combinedLabel })}
+                      >
+                        <div className="flex items-baseline justify-between gap-1">
+                          <span className="text-base font-bold leading-none">
+                            {idx === 0 ? `★ ${entry.merge.combinedLabel}` : tbl.tableNumber}
+                          </span>
+                        </div>
+                        <div className="text-[10px] mt-1 opacity-75">{colors.label}</div>
+                      </button>
+                    )
+                  })
+                )}
+
+                {/* Pass 2: standalone tables + empty placeholders, skipping
+                    cells claimed by a merge in pass 1. */}
+                {Array.from({ length: currentSection.gridRows || 4 }).map((_, row) =>
+                  Array.from({ length: currentSection.gridColumns || 6 }).map((_, col) => {
+                    if (claimedCells.has(`${row},${col}`)) return null
+                    const table = tables.find((t) => t.gridRow === row && t.gridCol === col)
+                    if (table) {
+                      const colors = statusColors[table.status] || statusColors.FREE
+                      const inConfirmMode = !!confirmReservationId
+                      const isEligible = inConfirmMode && eligibleTableIds && eligibleTableIds.has(table.id)
+                      const dimmed = inConfirmMode && !isEligible
+                      const overlay = liveByTableId[table.id]
+                      const overlayRes =
+                        table.status === 'ARRIVING_SOON'
+                          ? (overlay?.nextReservation || overlay?.currentReservation)
+                          : (overlay?.currentReservation || overlay?.nextReservation)
+                      const showOverlay = !inConfirmMode && OVERLAY_STATUSES.has(table.status) && overlayRes
+                      const isDropTarget = dragHover && dragHover.row === row && dragHover.col === col
+                      const isDragSource = dragSourceId === table.id
+                      // Drag handle only on non-OCCUPIED, non-OOS tables
+                      // (matches the server's merge-eligibility rule).
+                      const canDrag = !inConfirmMode && table.status !== 'OCCUPIED' && table.status !== 'OUT_OF_SERVICE'
+                      return (
+                        <div
+                          key={`cell-${row}-${col}`}
+                          style={{ gridColumn: `${col + 1}`, gridRow: `${row + 1}` }}
+                          onDragOver={(e) => handleDragOver(e, { table })}
+                          onDragLeave={(e) => handleDragLeave(e, { table })}
+                          onDrop={(e) => handleDrop(e, { table })}
+                          className={`relative ${isDropTarget ? 'ring-4 ring-amber-400 ring-offset-1 rounded-lg' : ''}`}
+                        >
+                          <button
+                            onClick={() => {
+                              if (inConfirmMode) {
+                                if (isEligible) handleAssignFromConfirm(table)
+                              } else {
+                                handleTableClick(table)
+                              }
+                            }}
+                            disabled={dimmed || mergeWorking}
+                            className={`w-full border-2 rounded-lg p-2 transition-all min-h-[80px] flex flex-col items-stretch justify-between text-left ${
+                              dimmed ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'
+                            } ${
+                              isEligible ? 'ring-4 ring-primary ring-offset-2' : ''
+                            } ${isDragSource ? 'opacity-60' : ''} ${colors.bg} ${colors.border} ${colors.text}`}
+                          >
+                            <div className="flex items-baseline justify-between gap-1">
+                              <span className="text-base font-bold leading-none">{table.tableNumber}</span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] opacity-70 leading-none">{table.seatCount}</span>
+                                {/* Tier I commit 2 — drag handle. Native
+                                    HTML5 draggable on the handle ONLY so
+                                    the parent button's onClick still
+                                    opens the popup. stopPropagation on
+                                    pointer events keeps the click
+                                    handler clean. */}
+                                {canDrag && (
+                                  <span
+                                    role="button"
+                                    aria-label={t('merge.handleTooltip')}
+                                    title={t('merge.handleTooltip')}
+                                    draggable
+                                    onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, table) }}
+                                    onDragEnd={(e) => { e.stopPropagation(); handleDragEnd() }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    className="ml-1 cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-800 leading-none select-none"
+                                    style={{ fontSize: '14px' }}
+                                  >⠿</span>
+                                )}
+                              </div>
+                            </div>
+                            {showOverlay ? (
+                              <>
+                                <div className="text-xs font-semibold mt-1 leading-tight flex items-center gap-1 min-w-0">
+                                  <span className="truncate">{truncateGuestName(overlayRes.guestName)}</span>
+                                  {overlayRes.partySize != null && (
+                                    <span className="opacity-75 shrink-0">{t('liveOverlay.party', { count: overlayRes.partySize })}</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center justify-between gap-1 mt-0.5">
+                                  <span className="text-[11px] opacity-80">{overlayRes.time || ''}</span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <SpecialRequestsBadge
+                                      hasSpecialRequests={overlayRes.hasSpecialRequests}
+                                      className="text-sm"
+                                    />
+                                    <MinLateBadge secondsLate={overlay?.secondsLate} />
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-[10px] mt-1 opacity-75">{colors.label}</div>
+                            )}
+                          </button>
+                        </div>
+                      )
+                    }
+                    // Empty placeholder cell. Also a drop target so an
+                    // adjacent table can be dragged onto it — though
+                    // dragOver will reject if no table is at the cell.
+                    return (
+                      <div
+                        key={`cell-${row}-${col}`}
+                        style={{ gridColumn: `${col + 1}`, gridRow: `${row + 1}` }}
+                        className="border border-dashed border-gray-200 rounded-lg min-h-[80px]"
+                      />
+                    )
+                  })
+                )}
+              </div>
+            )
+          })()
         )}
       </div>
 
@@ -560,6 +990,16 @@ export default function LiveFloorPlanPage() {
         onClose={() => { setWalkInTable(null); setWalkInArrivingWarning(null) }}
         onSeated={() => { loadLayout(true) }}
       />
+
+      {/* Tier I commit 2 — standalone party-too-large override modal,
+          triggered by 409 from PUT /reservations/:id/assign-table. */}
+      {overrideInfo && (
+        <OverrideModal
+          info={overrideInfo}
+          onCancel={handleOverrideCancel}
+          onConfirm={handleOverrideConfirm}
+        />
+      )}
     </div>
   )
 }

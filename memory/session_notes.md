@@ -4,7 +4,27 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier I commit 1 (backend table-merging data model + endpoints; ZERO UI change) SHIPPED. Tier E + Tier F + Tier D all FULLY COMPLETE from earlier in the session.** I1 backend-only commit landed:
+**Last session: 2026-05-16. Tier I commit 2 (Live overlay drag UX + override modal) SHIPPED on top of commit 1. Tier E + Tier F + Tier D FULLY COMPLETE from earlier in the session.** I2 lives entirely on the Live page + popup + new OverrideModal component — no backend changes (I1 already ships the contract). High-regression-risk surface; defended via 19/19 C6 popup-actions cases + the full backend regression battery, all green.
+
+Key implementation details (full record in SPEC §15 Resolved-by-Tier-I-commit-2):
+- **Live page two-pass render** at `apps/restaurant/app/dashboard/live/page.js`: pass 1a emits rectangular merges as single spanning cards via CSS `gridColumn/gridRow: span N`; pass 1b L-shape fallback renders per-member with shared amber border (no phantom corner cell); pass 2 iterates the grid skipping cells in `claimedCells` Set. All cards keep `min-h-[80px]`. The C6 §3.7 80px invariant is preserved (drag handle reuses the top-row chip space next to the seat count).
+- **Drag handle**: native HTML5 `draggable` on a ⠿ glyph span ONLY (not the parent button); stopPropagation on click/mousedown so tap-to-popup still works. Visible only on non-OCCUPIED, non-OUT_OF_SERVICE, non-confirm-mode tables (mirrors server merge-eligibility).
+- **Drag flow**: `onDragOver` does the adjacency + 4-cap pre-check client-side, sets amber-ring drop hint on valid targets; invalid targets get the not-allowed cursor (default). `onDrop` composes union of source+target groups, POSTs to `/api/restaurant/tables/merge`. Reservation-bound when in confirm-mode; default window is now→23:59 otherwise.
+- **`table:merged` + `table:unmerged` socket subscribers** trigger quiet refetch. The C4 `useSocketRefetch` covers reconnect/tab-focus, so merged-card state stays consistent across §4.4.
+- **Popup merge sub-header** (amber chip with combinedLabel + summedSeats) renders when `current.merge?.isActive`. `popupActions.actionsForStatus` appends `unmerge` payload-keyed (same pattern E1 introduced for MODIFICATION_PENDING). New `unmerge` ActionButton variant (amber) wired to PUT `/api/restaurant/merges/:groupId/unmerge`.
+- **OverrideModal** standalone component triggered by 409 `party-too-large` from assign-table; uses `err.payload.error.{tableLabel,seatCount,partySize}` from the I1 structured body. "Assign anyway" re-POSTs with `force: true`.
+- **~16 new i18n keys** under `merge.*` + `override.*` + `actions.unmerge`. RO + EN parallel.
+- **C6 popup-actions smoke extended** with scenarios J/J'/J''/J''' (merge appended on CONFIRMED, suppressed on OCCUPIED, ignored when stale `isActive=false`, modification-pending wins). 19/19 PASS.
+- **QA fixture script** at `server/scripts/seed-tieri-qa-fixture.js` creates a contiguous 3×3 `[Tier I QA]` section at La Mama because the demo seed has no Manhattan-1 adjacencies. Idempotent.
+- **Regression battery all green**: Tier I1 12/12, Tier E1 31/31, Tier E2 33/33, Tier F2 24/24, Tier D2 22/22, C1 dispatcher 12/12.
+
+**`memory/waiter_ux_strategy.md` §3.7** updated with the merged-card render contract + drag-handle convention so future tier work doesn't relitigate.
+
+**Tier I commit 3 (calendar propagation + edge polish — badge in first member's column per decision 4, availability hint promotion) waits for Sebastian's Cowork browser QA of I2** via the QA fixture seeded above.
+
+**Earlier this session:**
+
+Tier I commit 1 (backend table-merging data model + endpoints; ZERO UI change) SHIPPED. Tier E + Tier F + Tier D all FULLY COMPLETE from earlier in the session.** I1 backend-only commit landed:
 
 - **Schema**: `TableMove.mergeGroupId String?` additive nullable + indexed; `mergedWithTableId` tagged deprecated via schema comment (no code reads/writes it after I1). The cap of 4 members is enforced at write time, not by the DB.
 - **3 new + 4 modified endpoints**:

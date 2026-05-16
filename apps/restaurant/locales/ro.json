@@ -44,7 +44,33 @@
     "noshow": "Marchează ne-prezentare",
     "save": "Salvează",
     "approveModification": "Aprobă modificarea",
-    "rejectModification": "Respinge modificarea"
+    "rejectModification": "Respinge modificarea",
+    "unmerge": "Separă mesele"
+  },
+  "merge": {
+    "handleTooltip": "Trage pentru a uni cu o masă adiacentă",
+    "dropHere": "Eliberează pentru a uni",
+    "merging": "Se unește…",
+    "unmerging": "Se separă…",
+    "mergedToast": "Mese unite: {label}",
+    "unmergedToast": "Mese separate",
+    "errorNotAdjacent": "Mesele trebuie să fie direct adiacente (fără diagonală).",
+    "errorCap": "Poți uni cel mult {max} mese.",
+    "errorOccupied": "Nu se poate uni: {tableLabel} este {status}.",
+    "errorWindowConflict": "Aceste mese sunt deja unite în acest interval.",
+    "errorReservationConflict": "O altă rezervare intră în conflict cu această unire.",
+    "errorCrossSection": "Mesele din secțiuni diferite nu pot fi unite.",
+    "errorGeneric": "Nu am putut uni mesele. Încearcă din nou.",
+    "headerLabel": "{label} · {seats} {seats, plural, one {loc} other {locuri}}",
+    "memberOf": "Parte din {label}"
+  },
+  "override": {
+    "title": "Numărul de persoane depășește masa",
+    "body": "Grup de {partySize} nu încape la {tableLabel} ({seatCount} {seatCount, plural, one {loc} other {locuri}}). Atribui oricum?",
+    "confirm": "Atribuie oricum",
+    "cancel": "Anulează",
+    "assigning": "Se atribuie…",
+    "successToast": "Atribuit la {tableLabel} (peste capacitate)"
   },
   "settings": {
     "title": "Setări",

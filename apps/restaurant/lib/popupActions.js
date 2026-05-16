@@ -59,6 +59,17 @@ function hasPendingModification(reservation) {
   return !!(reservation?.modificationPending && reservation.modificationPending.status === 'PENDING')
 }
 
+// Tier I commit 2 — merge-keyed branch. When the popup opens on a
+// table that's part of an active merge, the regular status-keyed action
+// set still applies (Seat / Edit / Cancel / etc. operate on the group
+// as a unit), but we additionally append 'unmerge' so staff can split
+// the group back to its original tables. This sits AFTER the
+// modification-pending early-return because that flow short-circuits
+// the full action set anyway.
+function hasActiveMerge(reservation) {
+  return !!(reservation?.merge && reservation.merge.isActive && reservation.merge.groupId)
+}
+
 function actionsForStatus(reservation) {
   // Modification-pending takes precedence over the regular state-action
   // matrix. Staff has to decide before the row's normal lifecycle
@@ -69,42 +80,61 @@ function actionsForStatus(reservation) {
   const status = reservation?.status
   const hasTable = hasAssignedTable(reservation)
   const awaitingDerived = isAwaitingGuestDerived(reservation)
+  let base
   switch (status) {
     case 'PENDING':
-      return ['confirm', 'reject', 'edit', 'cancel']
+      base = ['confirm', 'reject', 'edit', 'cancel']
+      break
     case 'CONFIRMED':
     case 'AUTO_CONFIRMED':
       if (awaitingDerived) {
-        return ['seat', 'noshow', 'edit', 'cancel']
+        base = ['seat', 'noshow', 'edit', 'cancel']
+      } else {
+        base = hasTable
+          ? ['edit', 'reassignTable', 'cancel']
+          : ['edit', 'pickTable', 'cancel']
       }
-      return hasTable
-        ? ['edit', 'reassignTable', 'cancel']
-        : ['edit', 'pickTable', 'cancel']
+      break
     case 'AWAITING_GUEST':
       // Defensive — enum doesn't include this today, but if a test
       // fixture / future migration ever supplies it, render the
       // right action set anyway.
-      return ['seat', 'noshow', 'edit', 'cancel']
+      base = ['seat', 'noshow', 'edit', 'cancel']
+      break
     case 'OCCUPIED':
-      return ['complete', 'cancel']
+      base = ['complete', 'cancel']
+      break
     case 'COMPLETED':
     case 'CANCELLED':
     case 'NO_SHOW':
-      return [] // view-only
+      base = [] // view-only
+      break
     case 'MODIFICATION_PENDING':
       // Deprecated dead branch — the status is never set in practice
       // (see schema enum comment). Kept here for defense-in-depth: if a
       // legacy fixture or future migration ever produces this status,
       // surface the approve/reject pair so staff aren't stuck.
-      return ['confirm', 'reject']
+      base = ['confirm', 'reject']
+      break
     default:
-      return []
+      base = []
   }
+
+  // Tier I commit 2 — append 'unmerge' when the table is part of an
+  // active merge group. Skip on terminal states (no useful unmerge
+  // affordance on a completed/cancelled/no-showed reservation card)
+  // and on Occupied (staff can't undo a merge mid-service — the merge
+  // auto-deactivates when the reservation completes).
+  if (hasActiveMerge(reservation) && status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'NO_SHOW' && status !== 'OCCUPIED') {
+    return [...base, 'unmerge']
+  }
+  return base
 }
 
 module.exports = {
   hasAssignedTable,
   isAwaitingGuestDerived,
   hasPendingModification,
+  hasActiveMerge,
   actionsForStatus,
 }

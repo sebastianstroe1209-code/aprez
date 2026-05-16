@@ -34,6 +34,10 @@ const VARIANT_STYLES = {
   complete:       'bg-green-600 text-white hover:bg-green-700',
   edit:           'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-300',
   noshow:         'bg-orange-100 text-orange-900 hover:bg-orange-200 border border-orange-300',
+  // Tier I commit 2 — Unmerge sits among the "edit-y" actions visually;
+  // amber tone matches the merge callout shipped in Tier I via the
+  // /layout/live merge sub-object.
+  unmerge:        'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300',
 }
 
 const DEFAULT_LABEL_KEY = {
@@ -46,6 +50,7 @@ const DEFAULT_LABEL_KEY = {
   complete: 'actions.complete',
   edit: 'actions.edit',
   noshow: 'actions.noshow',
+  unmerge: 'actions.unmerge',
 }
 
 export default function ActionButton({
