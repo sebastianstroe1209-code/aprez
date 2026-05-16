@@ -174,7 +174,20 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
   const guest = guestNameOf(current)
   const tableLabel = tableLabelOf(current)
   const hasSpecial = !!(current.specialRequests && String(current.specialRequests).trim())
-  const statusKey = current.status ? `statusLabel.${current.status}` : null
+  // Tier I commit 2 fix-the-fix — when the popup opens on a merge with no
+  // bound reservation, the Live page synthesizes a placeholder reservation
+  // (id: null) so the popup can still render the header + Unmerge action.
+  // Suppress the regular status chip in that case — "Auto-confirmed" reads
+  // as a false claim about a non-existent reservation. The merge sub-header
+  // chip below already conveys the relevant state.
+  const isSyntheticMerge = hasActiveMerge(current) && current.id == null
+  const statusKey = current.status && !isSyntheticMerge ? `statusLabel.${current.status}` : null
+  // Tier I commit 2 fix-the-fix — when the row is part of an active merge,
+  // the "Table" detail field reads the combined label ("TI-1+TI-2") rather
+  // than the lead member's tableNumber. Matches what the header chip says.
+  const displayTableLabel = hasActiveMerge(current)
+    ? current.merge.combinedLabel
+    : tableLabel
 
   // C6 P3-5: no-show is handled inside the popup (closes + toast with
   // 10s undo grace), so the parent doesn't need to know about it. Undo
@@ -586,6 +599,11 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
                     {t(statusKey)}
                   </span>
                 )}
+                {isSyntheticMerge && (
+                  <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200">
+                    {t('mergePopup.noReservationStatus')}
+                  </span>
+                )}
                 <MinLateBadge
                   secondsLate={current.secondsLate}
                   className="px-2.5 py-1 text-xs"
@@ -642,7 +660,7 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
                 </div>
                 <div>
                   <dt className="text-gray-500 font-medium">{t('popup.table')}</dt>
-                  <dd className="text-gray-900 mt-0.5">{tableLabel || t('popup.noTableAssigned')}</dd>
+                  <dd className="text-gray-900 mt-0.5">{displayTableLabel || t('popup.noTableAssigned')}</dd>
                 </div>
                 <div>
                   <dt className="text-gray-500 font-medium">{t('popup.phone')}</dt>

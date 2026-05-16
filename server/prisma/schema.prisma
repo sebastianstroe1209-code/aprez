@@ -233,6 +233,13 @@ model TableMove {
   isActive          Boolean   @default(true) @map("is_active")
   createdAt         DateTime  @default(now()) @map("created_at")
 
+  // KNOWN ISSUE flagged 2026-05-16 during Tier I commit 2 fix-the-fix:
+  // these FKs default to RESTRICT. Pre-Tier-I, TableMove rows were never
+  // written so it didn't bite. With Tier I writing real rows, the Tier F2
+  // section-delete endpoint now FK-fails (23001) when cascading to tables
+  // that have TableMove history. Fix is additive (set onDelete: Cascade
+  // on `table`, SetNull on the other two) but a schema migration wasn't
+  // authorized in the fix-the-fix turn — pick up in Tier J.
   table             RestaurantTable @relation("MovedTable", fields: [tableId], references: [id])
   mergedWithTable   RestaurantTable? @relation("MergedWithTable", fields: [mergedWithTableId], references: [id])
   reservation       Reservation?    @relation(fields: [reservationId], references: [id])

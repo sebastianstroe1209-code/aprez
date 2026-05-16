@@ -4,7 +4,24 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier I commit 2 (Live overlay drag UX + override modal) SHIPPED on top of commit 1. Tier E + Tier F + Tier D FULLY COMPLETE from earlier in the session.** I2 lives entirely on the Live page + popup + new OverrideModal component — no backend changes (I1 already ships the contract). High-regression-risk surface; defended via 19/19 C6 popup-actions cases + the full backend regression battery, all green.
+**Last session: 2026-05-16. Tier I commit 2 fix-the-fix SHIPPED on top of I2 + I1. Tier E + Tier F + Tier D FULLY COMPLETE from earlier in the session.** Cowork's I2 browser QA caught one blocking bug + two cosmetic touches; all three closed in this fix commit, plus the QA debris cleanup. Full record in SPEC §15 Resolved-by-Tier-I-commit-2 fix-the-fix entry.
+
+- **Blocking — OverrideModal unreachable from confirm-mode**: refactored the cell eligibility logic in `apps/restaurant/app/dashboard/live/page.js` into three buckets:
+  - `hardDisabled` = OCCUPIED || OUT_OF_SERVICE (truly not assignable)
+  - `softIneligible` = in-confirm-mode + !isEligible + party-doesn't-fit (table.seatCount < partySize OR merge.summedSeatCount < partySize). Stays clickable, dashed orange border + bg-orange-50/60 tint + tooltip "click to override". Click routes through assign-table → 409 party-too-large → OverrideModal opens.
+  - `conflictIneligible` = in-confirm-mode + !isEligible + table large enough but booked. Stays hard-disabled — no override path exists for time-conflict today.
+  Same split applied to merge spanning cards. Defensive source-grep confirmed only live/page.js renders confirm-mode cards.
+- **Cosmetic — synthetic-merge popup status chip**: when the popup opens on a merge with no bound reservation, the Live page synthesizes a placeholder reservation (id: null, status: 'AUTO_CONFIRMED'). The status chip rendered that as "Auto-confirmed" — false claim. Suppressed via `isSyntheticMerge = hasActiveMerge(current) && current.id == null`; replaced with neutral amber chip "Merged tables · no current reservation" / "Mese unite · fără rezervare curentă".
+- **Cosmetic — merge popup Table field**: body Table field showed lead member tableNumber instead of the combined label that's in the header chip. Switched to `displayTableLabel = hasActiveMerge(current) ? current.merge.combinedLabel : tableLabel`. Body now matches header ("TI-1+TI-2").
+- **2 new i18n keys** under `override.{tooltipHint,tinyHint}` + 1 under `mergePopup.noReservationStatus`. RO + EN parallel.
+- **QA cleanup**: reservation b1bd28c3 routed through staff cancel (CANCELLED); section 481f2692 routed through F2 admin delete (200, tablesRemoved:9). Both gone. Workaround surfaced a real **pre-existing FK bug**: `TableMove.tableId` references `RestaurantTable` with default RESTRICT, so F2 section-delete cascade FK-fails when QA tables have TableMove history. Pre-Tier-I, TableMove rows were never written so it didn't bite. **Schema fix (onDelete: Cascade on TableMove.table) drafted but deferred to Tier J** — the fix-the-fix turn didn't authorize a schema migration. The fix is one-line and additive; details inline at `server/prisma/schema.prisma` TableMove model "KNOWN ISSUE" comment + the workaround in `server/scripts/cleanup-tieri-qa.js` (delete TableMove rows first, then call F2).
+- **Regressions all green**: C6 popup-actions 19/19, Tier I1 12/12, Tier E1 31/31, Tier E2 33/33, Tier F2 24/24, Tier D2 22/22, C1 dispatcher 12/12.
+
+**Tier I commit 3 (calendar propagation + edge polish — "+T3" badge in first member's column per decision 4, availability hint promotion) waits for Sebastian's re-QA of the fix-the-fix in Chrome.**
+
+**Earlier this session:**
+
+Tier I commit 2 (Live overlay drag UX + override modal) SHIPPED on top of commit 1. Tier E + Tier F + Tier D FULLY COMPLETE from earlier in the session.** I2 lives entirely on the Live page + popup + new OverrideModal component — no backend changes (I1 already ships the contract). High-regression-risk surface; defended via 19/19 C6 popup-actions cases + the full backend regression battery, all green.
 
 Key implementation details (full record in SPEC §15 Resolved-by-Tier-I-commit-2):
 - **Live page two-pass render** at `apps/restaurant/app/dashboard/live/page.js`: pass 1a emits rectangular merges as single spanning cards via CSS `gridColumn/gridRow: span N`; pass 1b L-shape fallback renders per-member with shared amber border (no phantom corner cell); pass 2 iterates the grid skipping cells in `claimedCells` Set. All cards keep `min-h-[80px]`. The C6 §3.7 80px invariant is preserved (drag handle reuses the top-row chip space next to the seat count).

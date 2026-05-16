@@ -70,7 +70,12 @@
     "confirm": "Atribuie oricum",
     "cancel": "Anulează",
     "assigning": "Se atribuie…",
-    "successToast": "Atribuit la {tableLabel} (peste capacitate)"
+    "successToast": "Atribuit la {tableLabel} (peste capacitate)",
+    "tooltipHint": "Grup de {partySize} > {seatCount} locuri — apasă pentru a forța",
+    "tinyHint": "Necesită forțare"
+  },
+  "mergePopup": {
+    "noReservationStatus": "Mese unite · fără rezervare curentă"
   },
   "settings": {
     "title": "Setări",

@@ -70,7 +70,12 @@
     "confirm": "Assign anyway",
     "cancel": "Cancel",
     "assigning": "Assigning…",
-    "successToast": "Assigned to {tableLabel} (over capacity)"
+    "successToast": "Assigned to {tableLabel} (over capacity)",
+    "tooltipHint": "Party of {partySize} > {seatCount} seats — click to override",
+    "tinyHint": "Override needed"
+  },
+  "mergePopup": {
+    "noReservationStatus": "Merged tables · no current reservation"
   },
   "settings": {
     "title": "Settings",

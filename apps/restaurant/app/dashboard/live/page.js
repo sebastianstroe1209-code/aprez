@@ -695,7 +695,6 @@ export default function LiveFloorPlanPage() {
                   // eligible if any member is in eligibleTableIds.
                   const isEligible = inConfirmMode && eligibleTableIds &&
                     entry.memberRecords.some((tbl) => eligibleTableIds.has(tbl.id))
-                  const dimmed = inConfirmMode && !isEligible
                   // Aggregate status — pick the most "active" one.
                   // OCCUPIED > AWAITING_GUEST > ARRIVING_SOON > FREE.
                   const rank = { OCCUPIED: 4, AWAITING_GUEST: 3, ARRIVING_SOON: 2, FREE: 1, OUT_OF_SERVICE: 0 }
@@ -703,31 +702,51 @@ export default function LiveFloorPlanPage() {
                     .map((t) => t.status)
                     .reduce((a, b) => (rank[a] >= rank[b] ? a : b), 'FREE')
                   const colors = statusColors[dominantStatus] || statusColors.FREE
+                  // Tier I commit 2 fix-the-fix — soft-eligibility split.
+                  // hard-disable only OCCUPIED + OUT_OF_SERVICE; capacity-only
+                  // ineligibility (effective seats < partySize) stays clickable
+                  // so the click can route through the 409 path → OverrideModal.
+                  const hardDisabled = dominantStatus === 'OCCUPIED' || dominantStatus === 'OUT_OF_SERVICE'
+                  const tooSmall = inConfirmMode && confirmReservation &&
+                    merge.summedSeatCount < confirmReservation.partySize
+                  const conflictIneligible = inConfirmMode && !isEligible && !hardDisabled && !tooSmall
+                  const softIneligible = inConfirmMode && !isEligible && !hardDisabled && tooSmall
+                  const effectivelyDisabled = hardDisabled || conflictIneligible
                   return (
                     <button
                       key={`merge-${merge.groupId}`}
                       onClick={() => {
                         if (inConfirmMode) {
-                          if (isEligible) handleAssignFromConfirm(entry.memberRecords[0])
+                          // Eligible OR soft-ineligible (party-too-large
+                          // override path) both route through assign;
+                          // conflictIneligible + hardDisabled are no-ops.
+                          if (isEligible || softIneligible) handleAssignFromConfirm(entry.memberRecords[0])
                         } else {
                           handleMergeClick(merge)
                         }
                       }}
-                      disabled={dimmed}
+                      disabled={effectivelyDisabled}
                       style={{
                         gridColumn: `${bbox.minC + 1} / span ${bbox.colSpan}`,
                         gridRow: `${bbox.minR + 1} / span ${bbox.rowSpan}`,
                       }}
-                      className={`relative border-2 border-amber-500 rounded-lg p-2 transition-all min-h-[80px] flex flex-col items-stretch justify-between text-left ring-2 ring-amber-300 ${
-                        dimmed ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'
+                      className={`relative border-2 rounded-lg p-2 transition-all min-h-[80px] flex flex-col items-stretch justify-between text-left ring-2 ${
+                        effectivelyDisabled ? 'opacity-40 cursor-not-allowed border-amber-500 ring-amber-300' : 'cursor-pointer hover:shadow-lg'
+                      } ${
+                        softIneligible ? 'border-dashed border-orange-400 ring-orange-200 bg-orange-50/60' : 'border-amber-500 ring-amber-300'
                       } ${colors.bg} ${colors.text}`}
-                      title={t('merge.headerLabel', { label: merge.combinedLabel, seats: merge.summedSeatCount })}
+                      title={softIneligible
+                        ? t('override.tooltipHint', { partySize: confirmReservation?.partySize, seatCount: merge.summedSeatCount })
+                        : t('merge.headerLabel', { label: merge.combinedLabel, seats: merge.summedSeatCount })}
                     >
                       <div className="flex items-baseline justify-between gap-1">
                         <span className="text-base font-bold leading-none text-amber-900">★ {merge.combinedLabel}</span>
                         <span className="text-[10px] opacity-70 leading-none">{merge.summedSeatCount} seats</span>
                       </div>
                       <div className="text-[10px] mt-1 opacity-75">{colors.label}</div>
+                      {softIneligible && (
+                        <div className="text-[10px] mt-0.5 text-orange-700 font-semibold">{t('override.tinyHint')}</div>
+                      )}
                     </button>
                   )
                 })}
@@ -780,7 +799,19 @@ export default function LiveFloorPlanPage() {
                       const colors = statusColors[table.status] || statusColors.FREE
                       const inConfirmMode = !!confirmReservationId
                       const isEligible = inConfirmMode && eligibleTableIds && eligibleTableIds.has(table.id)
-                      const dimmed = inConfirmMode && !isEligible
+                      // Tier I commit 2 fix-the-fix — same soft-eligibility split
+                      // as the merge spanning card. Only OCCUPIED + OUT_OF_SERVICE
+                      // are hard-disabled; too-small tables stay clickable so the
+                      // 409 → OverrideModal path is reachable. Time-conflict
+                      // ineligibility (table is large enough but already booked
+                      // for the slot) stays hard-disabled — no override exists
+                      // for that case in the current backend.
+                      const hardDisabled = table.status === 'OCCUPIED' || table.status === 'OUT_OF_SERVICE'
+                      const tooSmall = inConfirmMode && confirmReservation &&
+                        table.seatCount < confirmReservation.partySize
+                      const conflictIneligible = inConfirmMode && !isEligible && !hardDisabled && !tooSmall
+                      const softIneligible = inConfirmMode && !isEligible && !hardDisabled && tooSmall
+                      const dimmed = hardDisabled || conflictIneligible
                       const overlay = liveByTableId[table.id]
                       const overlayRes =
                         table.status === 'ARRIVING_SOON'
@@ -804,17 +835,26 @@ export default function LiveFloorPlanPage() {
                           <button
                             onClick={() => {
                               if (inConfirmMode) {
-                                if (isEligible) handleAssignFromConfirm(table)
+                                // Soft-ineligible (party-too-large) routes
+                                // through assign so the 409 → OverrideModal
+                                // fires. Hard-disable + conflict-ineligible
+                                // are no-ops via the `disabled` attribute.
+                                if (isEligible || softIneligible) handleAssignFromConfirm(table)
                               } else {
                                 handleTableClick(table)
                               }
                             }}
                             disabled={dimmed || mergeWorking}
+                            title={softIneligible
+                              ? t('override.tooltipHint', { partySize: confirmReservation?.partySize, seatCount: table.seatCount })
+                              : undefined}
                             className={`w-full border-2 rounded-lg p-2 transition-all min-h-[80px] flex flex-col items-stretch justify-between text-left ${
                               dimmed ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'
                             } ${
                               isEligible ? 'ring-4 ring-primary ring-offset-2' : ''
-                            } ${isDragSource ? 'opacity-60' : ''} ${colors.bg} ${colors.border} ${colors.text}`}
+                            } ${
+                              softIneligible ? 'border-dashed border-orange-400 ring-2 ring-orange-200 bg-orange-50/60' : ''
+                            } ${isDragSource ? 'opacity-60' : ''} ${colors.bg} ${softIneligible ? '' : colors.border} ${colors.text}`}
                           >
                             <div className="flex items-baseline justify-between gap-1">
                               <span className="text-base font-bold leading-none">{table.tableNumber}</span>
