@@ -214,7 +214,19 @@ model TableMove {
   originalGridCol   Int       @map("original_grid_col")
   movedGridRow      Int       @map("moved_grid_row")
   movedGridCol      Int       @map("moved_grid_col")
+  // DEPRECATED (Tier I commit 1, 2026-05-16). The binary "table A is
+  // merged with table B" model can't represent the 3-4-table merges
+  // SPEC §8.2 calls for. Superseded by `mergeGroupId` below — every
+  // member of the same merge shares the group id. Column kept to
+  // avoid an --accept-data-loss migration for the cosmetic cleanup;
+  // no code path writes or reads it after Tier I.
   mergedWithTableId String?   @map("merged_with_table_id")
+  // Tier I commit 1: shared id across the 2-4 TableMove rows that
+  // belong to the same merge. The cap is enforced at write time
+  // (POST /api/restaurant/tables/merge rejects 5+ members), and the
+  // unmerge endpoint keys on this id to atomically deactivate every
+  // row in the group.
+  mergeGroupId      String?   @map("merge_group_id")
   date              DateTime  @db.Date
   timeStart         String    @map("time_start")
   timeEnd           String    @map("time_end")
@@ -225,6 +237,8 @@ model TableMove {
   mergedWithTable   RestaurantTable? @relation("MergedWithTable", fields: [mergedWithTableId], references: [id])
   reservation       Reservation?    @relation(fields: [reservationId], references: [id])
 
+  @@index([mergeGroupId])
+  @@index([isActive, date])
   @@map("table_moves")
 }
 

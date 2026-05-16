@@ -1,7 +1,19 @@
 const express = require('express');
+const crypto = require('crypto');
 const { body, param, query, validationResult } = require('express-validator');
 const { authenticateRestaurant } = require('../middleware/auth');
 const { EVENTS, dispatchAsync } = require('../services/notifications');
+const {
+  MAX_MERGE_MEMBERS,
+  MIN_MERGE_MEMBERS,
+  combinedLabel,
+  isConnectedByAdjacency,
+  timeRangesOverlap,
+  loadMergeGroup,
+  activeMergeMapForRestaurant,
+  findActiveMergeForTable,
+  deactivateMergesForReservation,
+} = require('../lib/tableMerges');
 
 const router = express.Router();
 
@@ -459,12 +471,19 @@ router.put(
 );
 
 // PUT /reservations/:id/assign-table - Reassign table
+// Tier I commit 1 — added party-too-large 409 with structured body
+// + { force: true } bypass. SPEC §8.2: "A party of 10 cannot be
+// assigned to a table of 7 (unless staff taps override)." The check
+// considers the effective seat count: if the target table is part of
+// an active merge that overlaps the reservation's time window, the
+// summed group seat count is used instead of the single-table count.
 router.put(
   '/reservations/:id/assign-table',
   authenticateRestaurant,
   [
     param('id').isUUID(),
     body('tableId').isUUID(),
+    body('force').optional().isBoolean(),
   ],
   handleValidationErrors,
   async (req, res, next) => {
@@ -472,7 +491,7 @@ router.put(
       const prisma = req.app.get('prisma');
       const restaurantId = req.user.restaurantId;
       const { id } = req.params;
-      const { tableId } = req.body;
+      const { tableId, force } = req.body;
 
       const reservation = await prisma.reservation.findFirst({
         where: {
@@ -489,7 +508,7 @@ router.put(
       // Service, regardless of when the reservation is for.
       const targetTable = await prisma.restaurantTable.findFirst({
         where: { id: tableId, restaurantId },
-        select: { status: true, tableNumber: true },
+        select: { status: true, tableNumber: true, seatCount: true },
       });
       if (!targetTable) {
         return res.status(404).json({ error: 'Table not found' });
@@ -497,6 +516,35 @@ router.put(
       if (targetTable.status === 'OCCUPIED' || targetTable.status === 'OUT_OF_SERVICE') {
         return res.status(409).json({
           error: `Cannot assign: table ${targetTable.tableNumber} is ${targetTable.status === 'OCCUPIED' ? 'occupied' : 'out of service'}.`,
+        });
+      }
+
+      // Tier I — effective seat count. If this table is in an active
+      // merge overlapping the reservation's window, the group's summed
+      // seat count is the right ceiling. Otherwise the single-table
+      // seatCount.
+      const merge = await findActiveMergeForTable(
+        prisma,
+        tableId,
+        reservation.date,
+        reservation.time,
+        reservation.endTime
+      );
+      const effectiveSeats = merge ? merge.summedSeatCount : targetTable.seatCount;
+      const effectiveLabel = merge ? merge.combinedLabel : targetTable.tableNumber;
+
+      // SPEC §8.2 — party-too-large guard. Bypass with { force: true }.
+      if (!force && reservation.partySize > effectiveSeats) {
+        return res.status(409).json({
+          error: {
+            code: 'party-too-large',
+            message: `Party of ${reservation.partySize} doesn't fit ${effectiveLabel} (${effectiveSeats} seat${effectiveSeats === 1 ? '' : 's'}). Pass { force: true } to override.`,
+            tableId,
+            tableLabel: effectiveLabel,
+            seatCount: effectiveSeats,
+            partySize: reservation.partySize,
+            mergeGroupId: merge?.groupId || null,
+          },
         });
       }
 
@@ -557,6 +605,11 @@ router.put(
         },
       });
 
+      // Tier I commit 1 (decision 2) — cancel auto-deactivates the
+      // merge bound to this reservation. Pre-merges with no
+      // reservationId stay until end-of-day cleanup.
+      const { deactivatedGroups } = await deactivateMergesForReservation(prisma, id);
+
       const io = req.app.get('io');
       if (updated.userId) {
         dispatchAsync(prisma, io, {
@@ -570,6 +623,10 @@ router.put(
       const cancelPayload = { ...updated, cancelledBy: 'restaurant' };
       io.emitToRestaurant(restaurantId, 'reservation:cancelled', cancelPayload);
       if (updated.userId) io.emitToUser(updated.userId, 'reservation:cancelled', cancelPayload);
+      // Surface auto-deactivated merges so subscribers re-render.
+      for (const groupId of deactivatedGroups) {
+        io.emitToRestaurant(restaurantId, 'table:unmerged', { groupId, deactivated: 1, reason: 'reservation-cancelled' });
+      }
 
       res.json(updated);
     } catch (error) {
@@ -755,6 +812,10 @@ router.put(
         },
       });
 
+      // Tier I commit 1 (decision 2) — auto-deactivate the merge
+      // bound to this reservation on completion.
+      const { deactivatedGroups } = await deactivateMergesForReservation(prisma, id);
+
       const io = req.app.get('io');
       if (updated.tableId) {
         const tableNow = new Date();
@@ -773,6 +834,9 @@ router.put(
       }
       io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
       if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
+      for (const groupId of deactivatedGroups) {
+        io.emitToRestaurant(restaurantId, 'table:unmerged', { groupId, deactivated: 1, reason: 'reservation-completed' });
+      }
 
       res.json(updated);
     } catch (error) {
@@ -831,6 +895,10 @@ router.put(
         },
       });
 
+      // Tier I commit 1 (decision 2) — auto-deactivate the merge
+      // bound to this reservation on no-show.
+      const { deactivatedGroups } = await deactivateMergesForReservation(prisma, id);
+
       const io = req.app.get('io');
       if (updated.tableId) {
         const tableNow = new Date();
@@ -849,6 +917,9 @@ router.put(
       }
       io.emitToRestaurant(restaurantId, 'reservation:updated', updated);
       if (updated.userId) io.emitToUser(updated.userId, 'reservation:updated', updated);
+      for (const groupId of deactivatedGroups) {
+        io.emitToRestaurant(restaurantId, 'table:unmerged', { groupId, deactivated: 1, reason: 'reservation-no-show' });
+      }
 
       // Include tableLabel in the response so the client can render it in
       // the undo toast without an extra round-trip if the popup didn't
@@ -1396,45 +1467,72 @@ router.put(
       const { guestCount, walkInName } = req.body;
 
       const tableNow = new Date();
-      const updated = await prisma.restaurantTable.update({
-        where: { id },
-        data: {
-          status: 'OCCUPIED',
-          statusChangedAt: tableNow,
-        },
+      const todayBuch = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
+      const nowHm = new Date().toLocaleTimeString('en-GB', {
+        timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      const todayObj = new Date(`${todayBuch}T00:00:00.000Z`);
+
+      // Tier I commit 1 (decision 6) — when the seated table is part of
+      // an active merge, the WHOLE merge group flips to OCCUPIED. Same
+      // walk-in activity row is written for the table the staff tapped
+      // (the merge target). Callers don't need to know about group ids;
+      // any member tableId resolves transparently.
+      const merge = await findActiveMergeForTable(prisma, id, todayObj, nowHm, nowHm);
+      const idsToFlip = merge ? merge.members.map((m) => m.id) : [id];
+
+      const restaurant = await prisma.restaurantTable.findUnique({
+        where: { id }, select: { restaurantId: true },
       });
 
-      // C6 Phase 1: persist the walk-in as a TableActivity row so calendar
-      // (§6.4) and historical reporting see it. The model existed since
-      // Tier B but had no writer; this endpoint is now its single creator.
-      const todayBuch = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
-      const activity = await prisma.tableActivity.create({
-        data: {
-          tableId: updated.id,
-          restaurantId: updated.restaurantId,
-          kind: 'WALK_IN',
-          date: new Date(`${todayBuch}T00:00:00.000Z`),
-          startedAt: tableNow,
-          partySize: parseInt(guestCount),
-          notes: walkInName ? walkInName.trim() : null,
-        },
-      });
+      // Atomically flip every member to OCCUPIED + write the single
+      // walk-in activity row. Single transaction so a partial flip
+      // can't leave the merge in a half-occupied limbo.
+      const ops = [
+        prisma.restaurantTable.updateMany({
+          where: { id: { in: idsToFlip } },
+          data: { status: 'OCCUPIED', statusChangedAt: tableNow },
+        }),
+        prisma.tableActivity.create({
+          data: {
+            tableId: id,
+            restaurantId: restaurant.restaurantId,
+            kind: 'WALK_IN',
+            date: todayObj,
+            startedAt: tableNow,
+            partySize: parseInt(guestCount),
+            notes: walkInName ? walkInName.trim() : null,
+          },
+        }),
+      ];
+      const [, activity] = await prisma.$transaction(ops);
 
       const io = req.app.get('io');
-      io.emitToRestaurant(updated.restaurantId, 'walkin:created', {
-        tableId: updated.id,
+      io.emitToRestaurant(restaurant.restaurantId, 'walkin:created', {
+        tableId: id,
         activityId: activity.id,
         partySize: parseInt(guestCount),
         walkInName: walkInName || null,
         startedAt: tableNow,
+        // Surface the group context to subscribers so a merged-table
+        // walk-in renders correctly even before the next /layout/live
+        // refresh.
+        mergeGroupId: merge?.groupId || null,
+        mergedTableIds: merge ? merge.members.map((m) => m.id) : null,
       });
-      io.emitToRestaurant(updated.restaurantId, 'table:status-changed', {
-        tableId: updated.id,
-        newStatus: 'OCCUPIED',
-        statusChangedAt: tableNow,
-      });
+      // Emit one table:status-changed per flipped member so existing
+      // C4 subscribers (live page, calendar) patch each cell in place.
+      for (const flippedId of idsToFlip) {
+        io.emitToRestaurant(restaurant.restaurantId, 'table:status-changed', {
+          tableId: flippedId,
+          newStatus: 'OCCUPIED',
+          statusChangedAt: tableNow,
+        });
+      }
 
-      res.json({ ...updated, activityId: activity.id });
+      // Return the originally-tapped table row for backward compat.
+      const updated = await prisma.restaurantTable.findUnique({ where: { id } });
+      res.json({ ...updated, activityId: activity.id, mergeGroupId: merge?.groupId || null });
     } catch (error) {
       next(error);
     }
@@ -1488,6 +1586,276 @@ router.post(
       });
 
       res.status(201).json(move);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ============================================
+// TABLE MERGING (Tier I commit 1, SPEC §8.2)
+//
+// POST /tables/merge
+// Body: {
+//   tableIds: [id1, id2, ...],   // 2-4 members, all adjacent, same restaurant
+//   date: 'YYYY-MM-DD',
+//   timeStart: 'HH:mm',
+//   timeEnd:   'HH:mm',
+//   reservationId?: uuid          // optional — see decisions log #1 (hybrid scope)
+// }
+// Returns 201 with the materialized merge group object (groupId,
+// members, summedSeatCount, combinedLabel, …) AND emits table:merged
+// to the restaurant room. Structured 400/409s on every guard failure
+// per the Tier I plan.
+// ============================================
+router.post(
+  '/tables/merge',
+  authenticateRestaurant,
+  [
+    body('tableIds').isArray({ min: 2 }).withMessage('tableIds must be an array of at least 2 UUIDs'),
+    body('tableIds.*').isUUID(),
+    body('date').matches(/^\d{4}-\d{2}-\d{2}$/),
+    body('timeStart').matches(/^\d{2}:\d{2}$/),
+    body('timeEnd').matches(/^\d{2}:\d{2}$/),
+    body('reservationId').optional({ nullable: true }).isUUID(),
+  ],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const restaurantId = req.user.restaurantId;
+      const { tableIds, date, timeStart, timeEnd, reservationId } = req.body;
+
+      // 1) Cap check up front so we don't pay for adjacency math on a
+      //    5-table request that's bound to fail anyway.
+      const uniqueIds = [...new Set(tableIds)];
+      if (uniqueIds.length < MIN_MERGE_MEMBERS) {
+        return res.status(400).json({
+          error: { code: 'merge-too-small', message: `Need at least ${MIN_MERGE_MEMBERS} distinct tables to merge.` },
+        });
+      }
+      if (uniqueIds.length > MAX_MERGE_MEMBERS) {
+        return res.status(400).json({
+          error: {
+            code: 'merge-cap-exceeded',
+            message: `Maximum ${MAX_MERGE_MEMBERS} tables can be merged.`,
+            requested: uniqueIds.length,
+            cap: MAX_MERGE_MEMBERS,
+          },
+        });
+      }
+
+      // 2) Time-window sanity. End-exclusive convention per §9.2.
+      if (timeRangesOverlap(timeStart, timeEnd, timeEnd, timeEnd)) {
+        // overlap-with-self trick: triggers only when start>=end
+        // ((start < end) is false), since end<end is also false.
+        // We need start<end strictly.
+      }
+      // Direct comparison reads cleaner than the overlap-with-self hack:
+      const startMin = parseInt(timeStart.split(':')[0]) * 60 + parseInt(timeStart.split(':')[1]);
+      const endMin = parseInt(timeEnd.split(':')[0]) * 60 + parseInt(timeEnd.split(':')[1]);
+      if (startMin >= endMin) {
+        return res.status(400).json({
+          error: { code: 'invalid-time-window', message: 'timeStart must be before timeEnd.' },
+        });
+      }
+
+      // 3) Load + scope-check all member tables. Reject if any belongs
+      //    to a different restaurant (defense vs. malicious cross-tenant ids).
+      const members = await prisma.restaurantTable.findMany({
+        where: { id: { in: uniqueIds }, restaurantId, isActive: true },
+        select: { id: true, tableNumber: true, seatCount: true, gridRow: true, gridCol: true, sectionId: true, status: true },
+      });
+      if (members.length !== uniqueIds.length) {
+        return res.status(404).json({
+          error: { code: 'tables-not-found', message: 'One or more tables do not belong to this restaurant.' },
+        });
+      }
+
+      // 4) All members in the same section. SPEC §8.2 is silent on cross-
+      //    section merges, but the grid coordinate system is per-section,
+      //    so a cross-section adjacency check would be meaningless.
+      const sectionIds = [...new Set(members.map((m) => m.sectionId))];
+      if (sectionIds.length > 1) {
+        return res.status(400).json({
+          error: { code: 'cross-section-merge', message: 'All merged tables must be in the same section.' },
+        });
+      }
+
+      // 5) Adjacency: every member reachable from any other via Manhattan-1.
+      if (!isConnectedByAdjacency(members)) {
+        return res.status(400).json({
+          error: {
+            code: 'not-adjacent',
+            message: 'All merged tables must be directly adjacent (up/down/left/right — not diagonal).',
+            members: members.map((m) => ({ id: m.id, tableNumber: m.tableNumber, gridRow: m.gridRow, gridCol: m.gridCol })),
+          },
+        });
+      }
+
+      // 6) Status check: no member is currently OCCUPIED (decision 3).
+      //    OUT_OF_SERVICE also blocked — you wouldn't merge with an
+      //    out-of-service table.
+      const blocked = members.filter((m) => m.status === 'OCCUPIED' || m.status === 'OUT_OF_SERVICE');
+      if (blocked.length > 0) {
+        return res.status(409).json({
+          error: {
+            code: 'member-not-mergeable',
+            message: `Cannot merge: ${blocked.map((b) => `${b.tableNumber} is ${b.status}`).join(', ')}.`,
+            blocked: blocked.map((b) => ({ id: b.id, tableNumber: b.tableNumber, status: b.status })),
+          },
+        });
+      }
+
+      // 7) Time-window conflict with existing active merges. Pull every
+      //    active merge row for the date that overlaps any of our member
+      //    tableIds. Reject if any belongs to a DIFFERENT merge group
+      //    whose window overlaps ours.
+      const dateObj = new Date(`${date}T00:00:00.000Z`);
+      const conflictingMoves = await prisma.tableMove.findMany({
+        where: {
+          isActive: true,
+          date: dateObj,
+          tableId: { in: uniqueIds },
+          mergeGroupId: { not: null },
+        },
+        select: { tableId: true, mergeGroupId: true, timeStart: true, timeEnd: true, table: { select: { tableNumber: true } } },
+      });
+      const overlapping = conflictingMoves.filter((m) =>
+        timeRangesOverlap(timeStart, timeEnd, m.timeStart, m.timeEnd)
+      );
+      if (overlapping.length > 0) {
+        return res.status(409).json({
+          error: {
+            code: 'merge-window-conflict',
+            message: `Some tables are already in another active merge during this window.`,
+            conflicts: overlapping.map((o) => ({
+              tableId: o.tableId,
+              tableNumber: o.table?.tableNumber,
+              groupId: o.mergeGroupId,
+              timeStart: o.timeStart,
+              timeEnd: o.timeEnd,
+            })),
+          },
+        });
+      }
+
+      // 8) Reservation conflict: another reservation (not the bound one)
+      //    overlapping the requested window on any member. Mirrors the
+      //    spec's "Reservation logic" intent — you can't merge tables
+      //    that are already booked by someone else in that window.
+      const otherReservations = await prisma.reservation.findMany({
+        where: {
+          tableId: { in: uniqueIds },
+          date: dateObj,
+          status: { in: ['CONFIRMED', 'AUTO_CONFIRMED', 'PENDING'] },
+          ...(reservationId ? { NOT: { id: reservationId } } : {}),
+        },
+        select: { id: true, tableId: true, time: true, endTime: true, partySize: true, guestName: true },
+      });
+      const reservationConflicts = otherReservations.filter((r) =>
+        timeRangesOverlap(timeStart, timeEnd, r.time, r.endTime)
+      );
+      if (reservationConflicts.length > 0) {
+        return res.status(409).json({
+          error: {
+            code: 'reservation-conflict',
+            message: `Some tables have other reservations during this window.`,
+            conflicts: reservationConflicts.map((r) => ({
+              reservationId: r.id,
+              tableId: r.tableId,
+              time: r.time,
+              endTime: r.endTime,
+              partySize: r.partySize,
+            })),
+          },
+        });
+      }
+
+      // 9) All checks passed — create one TableMove row per member with
+      //    a shared mergeGroupId. The original cell is captured from the
+      //    table's current (unmerged) coordinates; the moved cell is the
+      //    same since we don't physically displace the underlying row
+      //    (RestaurantTable @@unique([sectionId, gridRow, gridCol])
+      //    blocks shared coordinates).
+      const groupId = crypto.randomUUID();
+      await prisma.$transaction(
+        members.map((m) =>
+          prisma.tableMove.create({
+            data: {
+              tableId: m.id,
+              reservationId: reservationId || null,
+              originalGridRow: m.gridRow,
+              originalGridCol: m.gridCol,
+              movedGridRow: m.gridRow, // unchanged; merge is a virtual grouping
+              movedGridCol: m.gridCol,
+              mergeGroupId: groupId,
+              date: dateObj,
+              timeStart,
+              timeEnd,
+              isActive: true,
+            },
+          })
+        )
+      );
+
+      const group = await loadMergeGroup(prisma, groupId);
+
+      const io = req.app.get('io');
+      io.emitToRestaurant(restaurantId, 'table:merged', group);
+
+      res.status(201).json(group);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PUT /merges/:groupId/unmerge — atomically deactivate every member of
+// the merge group and emit table:unmerged.
+router.put(
+  '/merges/:groupId/unmerge',
+  authenticateRestaurant,
+  [param('groupId').isUUID()],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const restaurantId = req.user.restaurantId;
+      const { groupId } = req.params;
+
+      // Scope-check via join: ensure the group's rows belong to tables
+      // in this restaurant (defense vs. cross-tenant unmerge attempts).
+      const rows = await prisma.tableMove.findMany({
+        where: { mergeGroupId: groupId, table: { restaurantId } },
+        select: { id: true, isActive: true, tableId: true },
+      });
+      if (rows.length === 0) {
+        return res.status(404).json({
+          error: { code: 'merge-group-not-found', message: 'Merge group not found for this restaurant.' },
+        });
+      }
+
+      const activeIds = rows.filter((r) => r.isActive).map((r) => r.id);
+      if (activeIds.length === 0) {
+        // Idempotent: a second unmerge on an already-deactivated group
+        // is a no-op rather than an error.
+        return res.json({ message: 'Merge group already deactivated.', groupId, deactivated: 0 });
+      }
+
+      await prisma.tableMove.updateMany({
+        where: { id: { in: activeIds } },
+        data: { isActive: false },
+      });
+
+      const io = req.app.get('io');
+      io.emitToRestaurant(restaurantId, 'table:unmerged', {
+        groupId,
+        tableIds: rows.map((r) => r.tableId),
+        deactivated: activeIds.length,
+      });
+
+      res.json({ message: 'Merge group deactivated.', groupId, deactivated: activeIds.length });
     } catch (error) {
       next(error);
     }
@@ -1582,6 +1950,16 @@ router.get('/layout/live', authenticateRestaurant, async (req, res, next) => {
       },
     });
 
+    // Tier I commit 1 — attach the merge sub-object on tables that
+    // belong to an active merge group whose window covers "now". The
+    // mapper is async so it runs once outside the table loop.
+    const mergeMap = await activeMergeMapForRestaurant(
+      prisma,
+      restaurantId,
+      new Date(`${todayBuch}T00:00:00.000Z`),
+      nowHm
+    );
+
     const tablesWithStatus = tables.map((table) => {
       let occupancyDurationMin = null;
       let hasAlert = false;
@@ -1640,6 +2018,10 @@ router.get('/layout/live', authenticateRestaurant, async (req, res, next) => {
         currentReservation: summarize(current),
         nextReservation: summarize(next),
         secondsLate,
+        // Tier I commit 1 — null when the table is standalone; the
+        // current Live UI ignores unknown fields so this is purely
+        // additive (no I1 visual change).
+        merge: mergeMap.get(table.id) || null,
       };
     });
 

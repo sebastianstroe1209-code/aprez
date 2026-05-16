@@ -2,6 +2,7 @@ const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { authenticateUser } = require('../middleware/auth');
 const { EVENTS, dispatchAsync } = require('../services/notifications');
+const { deactivateMergesForReservation } = require('../lib/tableMerges');
 
 const router = express.Router();
 
@@ -477,6 +478,10 @@ router.put(
         },
       });
 
+      // Tier I commit 1 — auto-deactivate any merge bound to this
+      // reservation when the diner cancels (decision 2).
+      const { deactivatedGroups } = await deactivateMergesForReservation(prisma, id);
+
       const io = req.app.get('io');
       dispatchAsync(prisma, io, {
         event: EVENTS.RESERVATION_CANCELLED_BY_DINER,
@@ -489,6 +494,9 @@ router.put(
       const cancelPayload = { id, restaurantId: reservation.restaurantId, userId, cancelledBy: 'user', ...cancelled };
       io.emitToRestaurant(reservation.restaurantId, 'reservation:cancelled', cancelPayload);
       io.emitToUser(userId, 'reservation:cancelled', cancelPayload);
+      for (const groupId of deactivatedGroups) {
+        io.emitToRestaurant(reservation.restaurantId, 'table:unmerged', { groupId, deactivated: 1, reason: 'reservation-cancelled' });
+      }
 
       res.json(cancelled);
     } catch (error) {
@@ -792,6 +800,10 @@ router.post(
         time: reservation.time,
       });
 
+      // Tier I commit 1 — auto-deactivate merge on the diner's
+      // post-rejection cancel path too.
+      const { deactivatedGroups } = await deactivateMergesForReservation(prisma, id);
+
       const cancelPayload = {
         id,
         restaurantId: reservation.restaurantId,
@@ -801,6 +813,9 @@ router.post(
       };
       io.emitToRestaurant(reservation.restaurantId, 'reservation:cancelled', cancelPayload);
       io.emitToUser(userId, 'reservation:cancelled', cancelPayload);
+      for (const groupId of deactivatedGroups) {
+        io.emitToRestaurant(reservation.restaurantId, 'table:unmerged', { groupId, deactivated: 1, reason: 'reservation-cancelled' });
+      }
 
       res.json({ acknowledgedAt: now, reservation: cancelled });
     } catch (error) {

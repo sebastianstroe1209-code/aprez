@@ -115,6 +115,49 @@ call site.
 }
 ```
 
+### `table:merged`
+**Rooms:** `restaurant:{restaurantId}`
+**Emitted at:** `POST /api/restaurant/tables/merge` after the 2–4 `TableMove` rows are written. Tier I commit 1, SPEC §8.2.
+**Payload:** the materialized merge group object — same shape `loadMergeGroup()` returns and the same shape the `merge` sub-object on `/layout/live` carries:
+```
+{
+  groupId: string,
+  members: [
+    {
+      id: string,                // tableId
+      tableNumber: string,
+      seatCount: number,
+      originalCell: { row: number, col: number },
+      movedCell:    { row: number, col: number }
+    },
+    …
+  ],
+  summedSeatCount: number,
+  combinedLabel: "T1+T3",        // sorted by tableNumber for stability
+  isActive: true,
+  date: ISO date string,
+  timeStart: "HH:mm",
+  timeEnd:   "HH:mm",
+  reservationId: string | null   // null for pre-merges with no booking yet
+}
+```
+
+### `table:unmerged`
+**Rooms:** `restaurant:{restaurantId}`
+**Emitted at:**
+- `PUT /api/restaurant/merges/:groupId/unmerge` (explicit unmerge — atomic deactivation of every member's `TableMove` row).
+- Reservation-lifecycle hooks (`PUT /reservations/:id/cancel` on both restaurant + diner paths, `PUT /reservations/:id/complete`, `PUT /reservations/:id/no-show`, diner ack `cancel` action) — when the cancelled/completed/no-shown reservation was bound via `TableMove.reservationId`. Decision 2 from the Tier I plan: hybrid scoping — bound merges auto-deactivate with the reservation, pre-merges (null `reservationId`) survive until end-of-day cleanup.
+**Payload:**
+```
+{
+  groupId: string,
+  tableIds: string[],            // member tableIds (present on explicit unmerge; reservation hooks omit)
+  deactivated: number,           // count of TableMove rows flipped to isActive=false
+  reason?: 'reservation-cancelled' | 'reservation-completed' | 'reservation-no-show'
+                                 // present on lifecycle-driven emits; omitted on explicit unmerge
+}
+```
+
 ## Subscriber guidance
 
 - **Surgical updates only.** Patch the affected item in local state; do NOT refetch the whole list on every event. Full refetch is reserved for socket reconnect and `visibilitychange → visible` per §4.4.
