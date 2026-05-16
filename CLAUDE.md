@@ -4,6 +4,8 @@
 > The owner is **Sebastian Stroe** (Babson College, non-technical). Explain what you're doing and give terminal commands he can paste.
 
 > **Source-of-truth precedence (revised 2026-04-30):** `SPEC.md` is the **single canonical product spec**. It supersedes both `ApRez FULL DOC MVP1.docx` and the now-archived `MVP_SCOPE.md`. Read `SPEC.md` before planning any feature; cross-reference its section numbers (§5.1, §6.5, §9.3, etc.) when discussing changes. The docx is kept in the repo for reference only — do **not** treat it as authoritative.
+>
+> For any restaurant-platform UI work, additionally read `memory/waiter_ux_strategy.md` — it defines the Tier C6 waiter UX patterns and how they connect to the rest of the system. Treat it as binding for UI decisions during and after Tier C6.
 
 ---
 
@@ -163,3 +165,5 @@ For Claude Code: when implementing a feature, write the DoD checklist as comment
 The authoritative list of remaining MVP work lives in `SPEC.md` §15 "Known gaps & bugs to fix". Each entry references a section of `SPEC.md` so the spec context is one click away.
 
 When starting a new feature, read its `SPEC.md` section in full (not just the summary), build the feature, and remove the entry from §15 only after the feature passes manual visual verification (DoD #12).
+
+Tier C6 (Waiter Critical Path) is documented in `memory/waiter_ux_strategy.md`, including the updated tier order (... → C5 → C6 → D+E+F+I → ...) and the 5-phase coding process.

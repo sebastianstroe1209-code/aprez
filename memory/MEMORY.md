@@ -1,0 +1,8 @@
+- [User profile — Sebastian Stroe](user_profile.md) — non-technical Babson student, owns ApRez; explain commands before running
+- [ApRez project overview](project_aprez_overview.md) — what ApRez is, monorepo layout, ports, demo creds, top tech debt
+- [ApRez spec document](reference_spec_doc.md) — `ApRez FULL DOC MVP1.docx` is the product spec source of truth
+- [Session notes — handoff](session_notes.md) — where last session left off; pending audit + 5-item plan; quick-resume commands
+- [Waiter UX Strategy — Tier C6 Plan](waiter_ux_strategy.md) — locked strategy for restaurant-platform UX (13 items, 5-phase coding, §5a Socket.IO event list). Read before any restaurant-platform UI work.
+- [Stepping-away handoff protocol](feedback_session_handoffs.md) — when user steps away: stop dev servers + update session_notes.md (both, not one)
+- [Windows — TaskStop on `npm run dev` is unreliable](feedback_windows_dev_server_kill.md) — verify ports are free after TaskStop; orphaned next.js children are intermittent, not deterministic
+- [Tier-by-tier QA gate](feedback_tier_qa_gate.md) — stop after each Tier C/D/E sub-step; "let's resume" covers one sub-step, not a chain

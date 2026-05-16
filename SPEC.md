@@ -665,6 +665,8 @@ Append-only record of product decisions made since the v1 docx. Each entry: date
 
 These are tracked here until they're fixed; remove entries when each is resolved + verified in browser.
 
+**See also: memory/waiter_ux_strategy.md** — strategic framing for restaurant-platform UX changes (Tier C6). Read before any UI work on the restaurant platform.
+
 ### Bugs (small, high-priority)
 
 **Fixed in commit 1e8ccba (verify in browser):**
@@ -703,16 +705,16 @@ These are tracked here until they're fixed; remove entries when each is resolved
 - **§5.1 multi-filter on mobile home missing.** Only cuisine + search exposed. Spec requires location, party-size, date, time as combinable filters.
 - **§5.2 mobile profile gaps.** Photo gallery (swipeable), Google Maps embed, menu PDF viewer all missing.
 - **§5.6 modification request UI missing on mobile.** Backend route exists; no diner UI to initiate or to keep-or-cancel on rejection.
-- **§6.2 dashboard gaps.** Notification feed, "Add Reservation" button on dashboard, ban-client search on dashboard, dashboard-level reservation search all missing.
+- **§6.2 dashboard gaps.** Notification feed, "Add Reservation" button on dashboard, ban-client search on dashboard, dashboard-level reservation search all missing. (Tier C6 — see memory/waiter_ux_strategy.md §3)
 - **§6.3 service period filter on Live.** Calendar has it; Live page doesn't.
-- **§6.4 calendar interactions** beyond Bug 3: click-block popup actions, tap-empty-slot to create, edit-seats affordance, confirm-from-calendar.
+- **§6.4 calendar interactions** beyond Bug 3: click-block popup actions, tap-empty-slot to create, edit-seats affordance, confirm-from-calendar. (Tier C6 — see memory/waiter_ux_strategy.md §3)
 - **§6.5 modification request UI missing on restaurant.** Backend route exists; no frontend approve/reject UI.
 - **§6.7 staff-side photos and menu PDF upload missing.** §6.7 lists them as editable; only admin-side endpoints exist.
 - **Confused Flow (b) instruction in past Cowork session.** "Diner books" should be tested via the mobile app, not via the staff create form. Spec is unchanged; just a testing/communication note.
 
 ### Missing features (IN scope, never built)
 - **§5.9 Account deletion (GDPR)** — diner-side "Delete my account" + backend endpoint that erases PII. Required for EU compliance.
-- **§5.3 Special requests free-text field** on reservation creation. (May exist on schema; UI not exposed.)
+- **§5.3 Special requests free-text field** on reservation creation. (May exist on schema; UI not exposed.) (Tier C6 — see memory/waiter_ux_strategy.md §3)
 - **§6.8 Forgot password flow** for restaurant staff. Email-based reset.
 - **§6.4 Calendar enhancements** — show walk-ins, current-occupation segments, OOS blocks, past activity, "live" segment for currently-occupied tables. See §6.4 (updated 2026-04-30).
 - **§7.1 Photos upload** for restaurants in admin tool (cover + 5–10 gallery JPG/PNG).
