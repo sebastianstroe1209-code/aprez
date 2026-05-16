@@ -98,6 +98,26 @@
     "timeoutError": "Conexiune pierdută. Reîncearcă?",
     "addDetails": "+ Adaugă detalii"
   },
+  "walkIn": {
+    "title": "Așezi un client?",
+    "subtitle": "Masa {tableLabel} · {seats} {seats, plural, one {loc} other {locuri}}",
+    "partyStepperLabel": "Persoane",
+    "nameFieldLabel": "Nume (opțional)",
+    "nameFieldToggle": "+ Adaugă nume",
+    "buttonSeat": "Așază",
+    "buttonCancel": "Anulează",
+    "saving": "Se salvează…",
+    "warning": {
+      "arrivingSoon": "Masa {tableLabel} are o rezervare în {minutes} {minutes, plural, one {min} other {min}} pentru {name} ×{party} — așezi totuși un client?",
+      "overCapacity": "{party} {party, plural, one {persoană depășește} other {persoane depășesc}} masa de {seats} {seats, plural, one {loc} other {locuri}} — așezi totuși?"
+    },
+    "toast": {
+      "seated": "Walk-in așezat la {tableLabel}, {party} {party, plural, one {persoană} other {persoane}}"
+    },
+    "error": {
+      "tableNotFree": "Masa nu mai este liberă — actualizează și încearcă din nou."
+    }
+  },
   "liveOverlay": {
     "minLate": "{minutes} {minutes, plural, one {min întârziere} other {min întârziere}}",
     "specialRequestsTooltip": "Cerințe speciale",

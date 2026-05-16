@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 item 3 (Live floor overlay) COMPLETE — Live page now calls both `/layout` (section/grid structure) and `/layout/live` (augmented per-table currentReservation/nextReservation/secondsLate) in parallel and merges by tableId. Each Occupied / Arriving Soon / Awaiting Guest card renders guest name (truncated 12 chars), party size, time, special-request ✦ badge, and "X min late" pill (threshold secondsLate > 600 / 10 min). Free + OOS cards unchanged. Click on a non-Free non-OOS table opens the shared ReservationDetailPopup from Phase 2; Free/OOS clicks are no-ops in this phase (Free becomes the walk-in target in P3-4). Card min-height bumped from 90px to 80px (per §3.7 spec floor for Tier I drag handles). Socket sub augmented: any reservation:* or walkin:* event triggers a quiet refetch since the overlay fields aren't in the `table:status-changed` payload. P3-4 (Walk-in fast seating) is next.**
+**Last session: 2026-05-16. Tier C6 Phase 3 item 4 (Walk-in fast seating) COMPLETE — new `WalkInActionSheet` component (party stepper, optional collapsible name field, capacity-override warning, pending-sync save) wired on the Live page: Free clicks open it directly; Arriving-Soon clicks within 30 min of the upcoming reservation open it with a pre-form acknowledgement warning per §3.4 edge cases; Arriving-Soon ≥30 min opens the existing ReservationDetailPopup on the upcoming reservation. Backend `PUT /api/restaurant/tables/:id/seat` extended to accept optional `walkInName` body field (stored in `TableActivity.notes`); `walkin:created` event payload now carries `walkInName`. End-to-end smoke confirmed: PUT response, event payload, and DB row all carry the name. P3-5 (No-show with undo) is next.**
 
 ## Where we left off
 
@@ -46,9 +46,38 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 item 3 (Live overlay) complete; P3-4 (Walk-in fast seating) is next, gated on Sebastian's approval
+## What's pending — Phase 3 item 4 (Walk-in fast seating) complete; P3-5 (No-show + undo) is next, gated on Sebastian's approval
 
-**C6 P3-3 (Live floor overlay) shipped this session.** Changes scoped to `apps/restaurant/app/dashboard/live/page.js`:
+**C6 P3-4 (Walk-in fast seating) shipped this session.** New component + Live wiring + small backend extension.
+
+New component `apps/restaurant/components/WalkInActionSheet.jsx`:
+- Props: `table`, `isOpen`, `onClose`, `onSeated(updated)`, optional `arrivingSoonWarning: { name, party, minutes }`.
+- Renders bottom sheet at <768px / centered 560px modal at ≥768px.
+- Party-size stepper (default 2, ±, 48px round buttons, tabular-nums display).
+- Collapsible "+ Add name" field (text input revealed on click).
+- Over-capacity warning + ack: if `partySize > seatCount`, surfaces a Yes/No ack BEFORE Save is enabled. Yes overrides per §8.2; No snaps party back to seatCount.
+- ARRIVING_SOON warning gate: when caller passes `arrivingSoonWarning`, the form is hidden behind a Yes/Cancel ack with the strategy doc's exact copy ("Table {tableLabel} has a reservation in {minutes} min for {name} ×{party} — seat walk-in anyway?"). Yes reveals the form; Cancel closes outright.
+- Pending-sync save per §4.2: spinner + locked Save during PUT, 10s timeout fallback, inline error on failure (409 maps to `walkIn.error.tableNotFree`).
+- Success toast via `useToast`: `walkIn.toast.seated` (variant=success, 4s).
+- Esc closes; backdrop click closes.
+
+Backend extension (`server/src/routes/restaurantPlatform.routes.js`):
+- `PUT /api/restaurant/tables/:id/seat` body validator now accepts optional `walkInName` (string, nullable). When set, the value is stored on `TableActivity.notes` (the schema already had a `notes` text column — first writer). The `walkin:created` socket event payload now includes `walkInName` so subscribers (Live overlay in P3-3 onward) can render a label for unbacked walk-ins. Pre-existing `guestCount` validation unchanged; no breaking changes to existing callers.
+
+Live page wiring (`apps/restaurant/app/dashboard/live/page.js`):
+- `handleTableClick` rewritten to route by status:
+  - OUT_OF_SERVICE → no-op (unchanged).
+  - FREE → open WalkInActionSheet (replaces P3-3 no-op).
+  - ARRIVING_SOON → compute `minutesUntil` from `nextReservation.time` vs Bucharest now; if `< 30` open sheet with `arrivingSoonWarning`, else open ReservationDetailPopup on the upcoming reservation.
+  - OCCUPIED / AWAITING_GUEST → ReservationDetailPopup with `currentReservation` (unchanged from P3-3).
+- `<WalkInActionSheet>` mounted alongside `<ReservationDetailPopup>` at end of render tree.
+- `onSeated` triggers a quiet `loadLayout()` refetch — the socket events handle the surgical update, this is insurance against payload-shape mismatch.
+
+i18n keys added (`walkIn.*` — title, subtitle, partyStepperLabel, nameFieldLabel/Toggle, buttonSeat/Cancel, saving, warning.arrivingSoon, warning.overCapacity, toast.seated, error.tableNotFree) in both ro and en with ICU plurals on `seats`, `minutes`, `party`.
+
+End-to-end verification: PUT smoke confirmed response carries `activityId`; `walkin:created` socket event payload carries `walkInName: 'Smoke McTest'`; `TableActivity` row written with `kind: 'WALK_IN'`, `partySize: 3`, `notes: 'Smoke McTest'`. Test row cleaned up post-smoke. New component file zero hardcoded English UI strings. C4 §5a 7/7 ✓; C1 dispatcher 12/12 ✓. All dashboard routes 200.
+
+**C6 P3-3 (Live floor overlay) shipped earlier this session.** Changes scoped to `apps/restaurant/app/dashboard/live/page.js`:
 - `loadLayout()` now fetches `/api/restaurant/layout` AND `/api/restaurant/layout/live` in parallel; merges per-table currentReservation/nextReservation/secondsLate into `liveByTableId` keyed by table id. /layout/live is the C6 Phase 1 augmented endpoint.
 - New `OVERLAY_STATUSES` set = OCCUPIED, ARRIVING_SOON, AWAITING_GUEST. Cards in these statuses render the inline overlay (guest name + party + time + badges). FREE + OUT_OF_SERVICE render as before (status label only).
 - Card layout switched from `flex items-center justify-center` to `flex items-stretch justify-between` so the four rows (number/seat, guest+party, time+badges, fallback) stack with sensible spacing. `min-h-[80px]` per §3.7 spec floor.
@@ -157,14 +186,14 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 P3-4 (Walk-in fast seating) is the next code work.** Per waiter_ux_strategy.md §3.4: tapping a Free or Arriving-Soon table on the Live floor plan opens a small inline action sheet (Seat walk-in? + party size stepper + optional "Add name") that POSTs `PUT /api/restaurant/tables/:id/seat`. P3-3 made Free-table clicks no-ops in anticipation — P3-4 replaces the no-op with the action-sheet flow. Edge cases (party > seat count override, OOS skip, Arriving-Soon-within-30-min warning) per §3.4.
+**C6 P3-5 (No-show with undo) is the next code work.** Per waiter_ux_strategy.md §3.5: from the ReservationDetailPopup or the Live table popup for Awaiting-Guest reservations, "Mark no-show" sets status NoShow + frees the table, then shows a "Marked no-show — {name}. Undo" toast (variant=undo) with a 10-second grace. Undo verifies table state before reverting (race-with-walk-in edge case per §3.5: if a walk-in took the table in the grace window, undo shows an error toast and reservation stays NoShow). Backend `PUT /api/restaurant/reservations/:id/no-show` already exists from Phase 1; needs an `/undo` companion OR the existing route reused with status=AWAITING_GUEST.
 
 Remaining Phase 3 sequence (fastest-first):
 1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped earlier this session.
 2. ~~Pending reservation alert (3.6)~~ ✓ shipped earlier this session.
-3. ~~Live floor overlay (3.7)~~ ✓ shipped this session.
-4. **Walk-in fast seating (3.4)** — next.
-5. No-show with undo (3.5) — needs PUT /no-show wired + ToastProvider undo path.
+3. ~~Live floor overlay (3.7)~~ ✓ shipped earlier this session.
+4. ~~Walk-in fast seating (3.4)~~ ✓ shipped this session.
+5. **No-show with undo (3.5)** — next.
 6. Edit existing reservation (3.9) — needs PUT /reservations/:id wired into ReservationDetailPopup edit mode.
 7. Dashboard rebuild (3.8) — largest, last.
 8. Calendar improvements (3.10).
@@ -173,9 +202,9 @@ Remaining Phase 3 sequence (fastest-first):
 Each Phase 3 item is its own commit per §8 Phase 4 (per-commit verification including viewport screenshots at 375/768/1440).
 
 **Resume sequence (in order):**
-1. Sebastian Cowork-QAs the Live overlay at 375/768/1440 with a seeded AWAITING_GUEST reservation (or simulated late one) to verify the "X min late" pill + ✦ badge + popup click path.
-2. Sebastian gives explicit approval to begin C6 P3-4 (Walk-in fast seating).
-3. Phase 3 items 4-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian Cowork-QAs the walk-in action sheet at 375/768/1440: Free-table click (basic flow), party-size override warning, Arriving-Soon-within-30min warning gate, Esc/backdrop close, success toast.
+2. Sebastian gives explicit approval to begin C6 P3-5 (No-show + undo).
+3. Phase 3 items 5-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.

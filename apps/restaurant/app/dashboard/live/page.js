@@ -8,6 +8,7 @@ import { formatTime } from '../../../lib/format'
 import { subscribe } from '../../../lib/socket'
 import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
+import WalkInActionSheet from '../../../components/WalkInActionSheet'
 
 // Statuses that, per memory/waiter_ux_strategy.md §3.7, carry an inline
 // guest+party+time overlay on the floor-plan card. Free + OOS render
@@ -55,6 +56,11 @@ export default function LiveFloorPlanPage() {
   // are click-inert in this phase (Free becomes the walk-in target in P3-4).
   const [popupReservation, setPopupReservation] = useState(null)
   const [popupOpen, setPopupOpen] = useState(false)
+  // Walk-in action sheet (P3-4). Opens on FREE-table click and on
+  // ARRIVING_SOON-table click (with a pre-form warning if the upcoming
+  // reservation is within 30 minutes per §3.4 edge cases).
+  const [walkInTable, setWalkInTable] = useState(null)
+  const [walkInArrivingWarning, setWalkInArrivingWarning] = useState(null)
 
   // Confirm-mode: when ?confirmReservationId=<id> is set, the page enters a
   // restricted picker mode. Eligible tables are highlighted; clicking one
@@ -175,28 +181,67 @@ export default function LiveFloorPlanPage() {
     }
   }
 
-  // §3.7 click behavior: tables with an associated reservation open the
-  // shared ReservationDetailPopup. Free/OOS are click-inert in this phase
-  // (Free becomes the walk-in trigger in P3-4). Confirm-mode handling
-  // remains in the inline click handler so it isn't affected by this
-  // routing.
+  // §3.7 + §3.4 click behavior:
+  //  - OCCUPIED / AWAITING_GUEST: open ReservationDetailPopup (P3-3).
+  //  - ARRIVING_SOON: two paths — if the upcoming reservation is within
+  //    30 min, open the walk-in sheet WITH a pre-form warning (§3.4 edge
+  //    case); otherwise open ReservationDetailPopup on the upcoming
+  //    reservation (matches the previous P3-3 behavior). The user spec
+  //    for P3-4 routes ARRIVING_SOON clicks to the walk-in sheet, but
+  //    it's a destructive flow if the upcoming reservation is imminent —
+  //    so the warning gate guards it.
+  //  - FREE: open walk-in action sheet (P3-4 replaces the no-op).
+  //  - OUT_OF_SERVICE: no-op (out of C6 scope).
+  //  - Confirm-mode (?confirmReservationId=…): routes via inline click.
   const handleTableClick = (table) => {
-    const overlay = liveByTableId[table.id]
-    if (!OVERLAY_STATUSES.has(table.status)) {
-      // Free / OUT_OF_SERVICE — no-op per user instruction.
+    if (table.status === 'OUT_OF_SERVICE') return
+
+    if (table.status === 'FREE') {
+      setWalkInArrivingWarning(null)
+      setWalkInTable(table)
       return
     }
-    // ARRIVING_SOON points at nextReservation (it hasn't started yet);
-    // OCCUPIED and AWAITING_GUEST point at currentReservation.
-    const reservation =
-      table.status === 'ARRIVING_SOON'
-        ? (overlay?.nextReservation || overlay?.currentReservation)
-        : (overlay?.currentReservation || overlay?.nextReservation)
-    if (!reservation) return // overlay data not yet hydrated; ignore the tap
 
+    if (table.status === 'ARRIVING_SOON') {
+      const overlay = liveByTableId[table.id]
+      const next = overlay?.nextReservation
+      if (next?.time) {
+        const [h, m] = next.time.split(':').map(Number)
+        const now = new Date()
+        const buchHm = now.toLocaleTimeString('en-GB', {
+          timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false,
+        })
+        const [nh, nm] = buchHm.split(':').map(Number)
+        const minutesUntil = (h * 60 + m) - (nh * 60 + nm)
+        if (minutesUntil >= 0 && minutesUntil < 30) {
+          setWalkInArrivingWarning({
+            name: next.guestName || '—',
+            party: next.partySize ?? '—',
+            minutes: minutesUntil,
+          })
+          setWalkInTable(table)
+          return
+        }
+      }
+      // ≥30 min until next reservation → no immediate seating risk, open
+      // the popup so staff can review the upcoming guest. Walk-in is
+      // still reachable via Free tables.
+      if (next) {
+        setPopupReservation({
+          ...next,
+          table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount },
+        })
+        setPopupOpen(true)
+      }
+      return
+    }
+
+    // OCCUPIED / AWAITING_GUEST → popup with currentReservation.
+    const overlay = liveByTableId[table.id]
+    const reservation = overlay?.currentReservation || overlay?.nextReservation
+    if (!reservation) return
     setPopupReservation({
       ...reservation,
-      // The popup expects a table object for its tableLabel field.
       table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount },
     })
     setPopupOpen(true)
@@ -487,13 +532,25 @@ export default function LiveFloorPlanPage() {
         onAction={(actionType, reservation) => {
           // Phase 3-3 scope: render-only popup. The action handlers
           // (confirm/cancel/seat/edit/etc.) land in subsequent P3-* items
-          // (P3-4 walk-in, P3-5 no-show with undo, P3-6 edit). For now,
-          // close the popup and trigger a refetch so the overlay
-          // reflects whatever the backend ends up doing via other paths.
+          // (P3-5 no-show with undo, P3-6 edit). For now, close the popup
+          // and trigger a refetch so the overlay reflects whatever the
+          // backend ends up doing via other paths.
           setPopupOpen(false)
           setPopupReservation(null)
           loadLayout(true)
         }}
+      />
+
+      {/* Walk-in action sheet (P3-4). Local socket sub will pick up the
+          walkin:created + table:status-changed events the backend emits
+          on save, so we don't need to refetch — but doing so quietly is
+          cheap insurance against any payload-shape mismatch. */}
+      <WalkInActionSheet
+        table={walkInTable}
+        isOpen={!!walkInTable}
+        arrivingSoonWarning={walkInArrivingWarning}
+        onClose={() => { setWalkInTable(null); setWalkInArrivingWarning(null) }}
+        onSeated={() => { loadLayout(true) }}
       />
     </div>
   )

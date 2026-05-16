@@ -98,6 +98,26 @@
     "timeoutError": "Connection lost. Retry?",
     "addDetails": "+ Add details"
   },
+  "walkIn": {
+    "title": "Seat walk-in?",
+    "subtitle": "Table {tableLabel} · {seats} {seats, plural, one {seat} other {seats}}",
+    "partyStepperLabel": "Party size",
+    "nameFieldLabel": "Name (optional)",
+    "nameFieldToggle": "+ Add name",
+    "buttonSeat": "Seat",
+    "buttonCancel": "Cancel",
+    "saving": "Saving…",
+    "warning": {
+      "arrivingSoon": "Table {tableLabel} has a reservation in {minutes} {minutes, plural, one {min} other {min}} for {name} ×{party} — seat walk-in anyway?",
+      "overCapacity": "Party of {party} exceeds {seats}-{seats, plural, one {seat} other {seat}} table — seat anyway?"
+    },
+    "toast": {
+      "seated": "Walk-in seated at {tableLabel}, party of {party}"
+    },
+    "error": {
+      "tableNotFree": "Table is no longer free — refresh and try again."
+    }
+  },
   "liveOverlay": {
     "minLate": "{minutes} {minutes, plural, one {min late} other {min late}}",
     "specialRequestsTooltip": "Special requests",

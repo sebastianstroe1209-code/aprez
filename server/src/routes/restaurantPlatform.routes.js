@@ -1191,20 +1191,27 @@ router.put(
   }
 );
 
-// PUT /tables/:id/seat - Mark table as taken for walk-in
+// PUT /tables/:id/seat - Mark table as taken for walk-in. C6 P3-4 added
+// optional walkInName (stored on TableActivity.notes) so the calendar
+// view and live overlay can show a label for the walk-in party.
+//
+// SPEC §8.1 override: backend accepts any guestCount >= 1 even if it
+// exceeds the table's seatCount — the staff has the override per §8.2.
+// The UI warns before allowing it; the backend trusts the click.
 router.put(
   '/tables/:id/seat',
   authenticateRestaurant,
   [
     param('id').isUUID(),
     body('guestCount').isInt({ min: 1 }),
+    body('walkInName').optional({ nullable: true }).isString().trim(),
   ],
   handleValidationErrors,
   async (req, res, next) => {
     try {
       const prisma = req.app.get('prisma');
       const { id } = req.params;
-      const { guestCount } = req.body;
+      const { guestCount, walkInName } = req.body;
 
       const tableNow = new Date();
       const updated = await prisma.restaurantTable.update({
@@ -1227,6 +1234,7 @@ router.put(
           date: new Date(`${todayBuch}T00:00:00.000Z`),
           startedAt: tableNow,
           partySize: parseInt(guestCount),
+          notes: walkInName ? walkInName.trim() : null,
         },
       });
 
@@ -1235,6 +1243,7 @@ router.put(
         tableId: updated.id,
         activityId: activity.id,
         partySize: parseInt(guestCount),
+        walkInName: walkInName || null,
         startedAt: tableNow,
       });
       io.emitToRestaurant(updated.restaurantId, 'table:status-changed', {
