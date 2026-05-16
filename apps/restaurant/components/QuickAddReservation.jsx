@@ -123,6 +123,13 @@ export default function QuickAddReservation({ isOpen, onClose, prefill, onSaveSu
     partySize: '2',
     specialRequests: '',
   })
+  // C6 P3-8 §3.10: when Quick Add is opened from a calendar empty-slot
+  // click, the cell's tableId is prefilled. Posted to the backend so the
+  // reservation lands on that table; the waiter can clear the assignment
+  // with the badge's × to fall back to the unassigned-AutoConfirmed path
+  // (§9.5). No full table-picker per §3.3 (Quick Add stays form-light).
+  const [prefilledTableId, setPrefilledTableId] = useState(prefill?.tableId || null)
+  const [prefilledTableLabel, setPrefilledTableLabel] = useState(prefill?.tableLabel || null)
   const [availability, setAvailability] = useState(null)
   const [closedHoursAck, setClosedHoursAck] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -172,14 +179,18 @@ export default function QuickAddReservation({ isOpen, onClose, prefill, onSaveSu
     return () => window.removeEventListener('keydown', onKey)
   }, [isOpen, onClose])
 
-  // Reset transient state when opened.
+  // Reset transient state when opened. Also re-seed the prefill table
+  // tracking so re-opening from a different calendar cell picks up
+  // the new prefill without stale state from the previous open.
   useEffect(() => {
     if (isOpen) {
       setError('')
       setTimedOut(false)
       setClosedHoursAck(false)
+      setPrefilledTableId(prefill?.tableId || null)
+      setPrefilledTableLabel(prefill?.tableLabel || null)
     }
-  }, [isOpen])
+  }, [isOpen, prefill?.tableId, prefill?.tableLabel])
 
   // Live availability hint (debounced 300ms).
   const availabilityDeps = `${form.date}|${form.time}|${form.partySize}`
@@ -240,6 +251,7 @@ export default function QuickAddReservation({ isOpen, onClose, prefill, onSaveSu
         partySize: parseInt(form.partySize),
       }
       if (form.specialRequests.trim()) body.specialRequests = form.specialRequests.trim()
+      if (prefilledTableId) body.tableId = prefilledTableId
       const saved = await apiPost('/api/restaurant/reservations', body)
       if (onSaveSuccess) {
         // Parent owns post-save UX (toast copy, navigation, etc.).
@@ -300,6 +312,24 @@ export default function QuickAddReservation({ isOpen, onClose, prefill, onSaveSu
               className="text-gray-400 hover:text-gray-700 text-2xl leading-none min-w-[44px] min-h-[44px] flex items-center justify-center"
             >×</button>
           </div>
+
+          {/* C6 P3-8 §3.10: when launched from a calendar cell, show the
+              pre-selected table as a passive badge. The waiter can clear
+              it (× button) to fall back to the unassigned-AutoConfirmed
+              path per §9.5. No full table-picker per §3.3. */}
+          {prefilledTableId && prefilledTableLabel && (
+            <div className="flex items-center gap-2 bg-primary-bg text-primary border border-primary/30 rounded px-3 py-2 text-sm">
+              <span className="font-medium">
+                {t('quickAdd.prefilledTable', { tableLabel: prefilledTableLabel })}
+              </span>
+              <button
+                type="button"
+                onClick={() => { setPrefilledTableId(null); setPrefilledTableLabel(null) }}
+                aria-label={t('quickAdd.clearPrefilledTable')}
+                className="ml-auto text-primary hover:opacity-75 text-base leading-none min-w-[24px] min-h-[24px] flex items-center justify-center"
+              >×</button>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium mb-1">{t('quickAdd.guestName')}</label>

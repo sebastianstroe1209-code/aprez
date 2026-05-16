@@ -1,21 +1,42 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useTranslations } from 'next-intl'
 import { apiGet } from '../../../lib/api'
 import { subscribe } from '../../../lib/socket'
 import { useSocketRefetch } from '../../../lib/useSocketRefetch'
+import { useToast } from '../../../components/ui/ToastProvider'
+import CalendarNowIndicator from '../../../components/CalendarNowIndicator'
+import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
+import QuickAddReservation from '../../../components/QuickAddReservation'
+import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
 
 // SPEC §11: dates handled in Europe/Bucharest. en-CA returns YYYY-MM-DD.
 const todayBucharest = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
 
 export default function CalendarPage() {
+  const t = useTranslations()
+  const { show: showToast } = useToast()
   const [selectedDate, setSelectedDate] = useState(todayBucharest())
   const [sections, setSections] = useState([])
   const [reservations, setReservations] = useState([])
   const [activeSection, setActiveSection] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // C6 P3-8: ReservationDetailPopup (occupied-cell click) +
+  // QuickAddReservation (empty-cell click) both live at page level so
+  // any cell can summon them.
+  const [popupReservation, setPopupReservation] = useState(null)
+  const [popupOpen, setPopupOpen] = useState(false)
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [quickAddPrefill, setQuickAddPrefill] = useState(null)
+
+  // Calendar table wrapper ref — passed to CalendarNowIndicator so it
+  // can mutate the matching row's DOM directly without re-rendering the
+  // whole calendar each minute.
+  const gridRef = useRef(null)
 
   useEffect(() => {
     loadData()
@@ -108,6 +129,36 @@ export default function CalendarPage() {
     })
   }
 
+  // C6 P3-8 click router per §3.10 part b:
+  //   - existing reservation → open ReservationDetailPopup
+  //   - OUT_OF_SERVICE table → toast warning, no Quick Add
+  //   - otherwise (FREE / OCCUPIED / etc.) → open Quick Add prefilled
+  //     with the cell's date/time/tableId
+  const handleCellClick = (table, time, res) => {
+    if (res) {
+      setPopupReservation({
+        ...res,
+        table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount },
+      })
+      setPopupOpen(true)
+      return
+    }
+    if (table.status === 'OUT_OF_SERVICE') {
+      showToast(t('calendar.tableOutOfServiceToast'), {
+        variant: 'warning',
+        durationMs: 3000,
+      })
+      return
+    }
+    setQuickAddPrefill({
+      date: selectedDate,
+      time,
+      tableId: table.id,
+      tableLabel: table.tableNumber,
+    })
+    setQuickAddOpen(true)
+  }
+
   if (loading) {
     return <div className="text-center py-12">Loading calendar...</div>
   }
@@ -150,7 +201,15 @@ export default function CalendarPage() {
       </div>
 
       {/* Calendar Grid */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div ref={gridRef} className="bg-white rounded-lg shadow overflow-hidden relative">
+        {/* CalendarNowIndicator owns its own setInterval and mutates the
+            matching <tr data-time="HH:mm"> directly — the parent
+            calendar's React tree stays stable across minute ticks. */}
+        <CalendarNowIndicator
+          containerRef={gridRef}
+          selectedDate={selectedDate}
+          label={t('calendar.nowIndicator')}
+        />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -166,20 +225,32 @@ export default function CalendarPage() {
             </thead>
             <tbody>
               {timeSlots.map(time => (
-                <tr key={time} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium border-r bg-gray-50">{time}</td>
+                <tr key={time} data-time={time} className="border-b hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium border-r bg-gray-50 tabular-nums">{time}</td>
                   {tables.map(table => {
                     const res = getReservationForTableAndTime(table.id, time)
+                    const isOos = table.status === 'OUT_OF_SERVICE'
                     return (
-                      <td key={table.id} className="px-2 py-3 border-r text-center">
-                        {res && (
-                          <div className="bg-primary text-white text-xs p-2 rounded">
-                            <div className="font-medium">
+                      <td
+                        key={table.id}
+                        onClick={() => handleCellClick(table, time, res)}
+                        className={`px-2 py-3 border-r text-center cursor-pointer ${
+                          isOos && !res ? 'bg-gray-100' : ''
+                        }`}
+                      >
+                        {res ? (
+                          <div className="bg-primary text-white text-xs p-2 rounded inline-flex items-center gap-1">
+                            <span className="font-medium truncate">
                               {res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'Guest')}
-                            </div>
-                            <div className="text-xs">{res.partySize} guests</div>
+                            </span>
+                            <SpecialRequestsBadge
+                              specialRequests={res.specialRequests}
+                              hasSpecialRequests={res.hasSpecialRequests}
+                              className="text-amber-200"
+                            />
+                            <span className="text-[10px] opacity-75 ml-1">×{res.partySize}</span>
                           </div>
-                        )}
+                        ) : null}
                       </td>
                     )
                   })}
@@ -195,6 +266,24 @@ export default function CalendarPage() {
           No tables in this section
         </div>
       )}
+
+      {/* C6 P3-8 mounts: occupied-cell click and empty-cell click. */}
+      <ReservationDetailPopup
+        reservation={popupReservation}
+        isOpen={popupOpen}
+        onClose={() => { setPopupOpen(false); setPopupReservation(null) }}
+        onAction={() => {
+          setPopupOpen(false)
+          setPopupReservation(null)
+          loadData(true)
+        }}
+      />
+      <QuickAddReservation
+        isOpen={quickAddOpen}
+        onClose={() => { setQuickAddOpen(false); setQuickAddPrefill(null) }}
+        prefill={quickAddPrefill}
+        onSaveSuccess={() => loadData(true)}
+      />
     </div>
   )
 }

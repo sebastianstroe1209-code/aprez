@@ -8,6 +8,8 @@ import { formatDate } from '../../../lib/format'
 import { subscribe } from '../../../lib/socket'
 import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 import { useReservationsTab } from '../../../lib/pendingContext'
+import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
+import MinLateBadge from '../../../components/ui/MinLateBadge'
 
 const statusBadgeColor = {
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -16,6 +18,27 @@ const statusBadgeColor = {
   CANCELLED: 'bg-red-100 text-red-800',
   COMPLETED: 'bg-gray-100 text-gray-800',
   NO_SHOW: 'bg-orange-100 text-orange-800',
+}
+
+// Compute seconds-late client-side for the Reservations table (the
+// /reservations endpoint doesn't return secondsLate; only /layout/live
+// and /dashboard/summary do). Returns a number when the row's table is
+// AWAITING_GUEST and the reservation hasn't been seated yet; otherwise
+// null. Same threshold as the shared <MinLateBadge> (>600 → render).
+function reservationSecondsLate(res) {
+  if (res?.seatedAt) return null
+  if (res?.table?.status !== 'AWAITING_GUEST') return null
+  if (!res.time || !res.date) return null
+  const resDate = typeof res.date === 'string' ? res.date.slice(0, 10) : new Date(res.date).toISOString().slice(0, 10)
+  const todayBuch = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
+  if (resDate !== todayBuch) return null
+  const buchHm = new Date().toLocaleTimeString('en-GB', {
+    timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+  const [rh, rm] = res.time.split(':').map(Number)
+  const [nh, nm] = buchHm.split(':').map(Number)
+  const mins = (nh * 60 + nm) - (rh * 60 + rm)
+  return mins > 0 ? mins * 60 : null
 }
 
 export default function ReservationsPage() {
@@ -326,7 +349,10 @@ export default function ReservationsPage() {
                     className={`border-b hover:bg-gray-50 ${res.id === focusId ? 'bg-amber-50' : ''}`}
                   >
                     <td className="px-6 py-4 text-sm">
-                      <div>{res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'N/A')}</div>
+                      <div className="flex items-center gap-1">
+                        <span>{res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'N/A')}</span>
+                        <SpecialRequestsBadge specialRequests={res.specialRequests} />
+                      </div>
                       {res.specialRequests && (
                         <div className="text-xs text-gray-500 italic mt-1">Note: {res.specialRequests}</div>
                       )}
@@ -336,14 +362,17 @@ export default function ReservationsPage() {
                     <td className="px-6 py-4 text-sm">{res.time}</td>
                     <td className="px-6 py-4 text-sm">{res.partySize}</td>
                     <td className="px-6 py-4 text-sm">
-                      <span className={`px-3 py-1 rounded text-xs font-medium ${statusBadgeColor[res.status] || 'bg-gray-100'}`}>
-                        {res.status.replace(/_/g, ' ')}
-                      </span>
-                      {res.seatedAt && (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED') && (
-                        <span className="ml-2 px-3 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                          Seated
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-3 py-1 rounded text-xs font-medium ${statusBadgeColor[res.status] || 'bg-gray-100'}`}>
+                          {res.status.replace(/_/g, ' ')}
                         </span>
-                      )}
+                        {res.seatedAt && (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED') && (
+                          <span className="px-3 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            Seated
+                          </span>
+                        )}
+                        <MinLateBadge secondsLate={res.secondsLate ?? reservationSecondsLate(res)} />
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {res.table?.tableNumber

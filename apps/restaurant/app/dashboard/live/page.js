@@ -9,6 +9,8 @@ import { subscribe } from '../../../lib/socket'
 import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
 import WalkInActionSheet from '../../../components/WalkInActionSheet'
+import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
+import MinLateBadge from '../../../components/ui/MinLateBadge'
 
 // Statuses that, per memory/waiter_ux_strategy.md §3.7, carry an inline
 // guest+party+time overlay on the floor-plan card. Free + OOS render
@@ -380,9 +382,6 @@ export default function LiveFloorPlanPage() {
                       ? (overlay?.nextReservation || overlay?.currentReservation)
                       : (overlay?.currentReservation || overlay?.nextReservation)
                   const showOverlay = !inConfirmMode && OVERLAY_STATUSES.has(table.status) && overlayRes
-                  const minutesLate = overlay?.secondsLate && overlay.secondsLate > 600
-                    ? Math.floor(overlay.secondsLate / 60)
-                    : null
                   return (
                     <button
                       key={`${row}-${col}`}
@@ -415,18 +414,11 @@ export default function LiveFloorPlanPage() {
                           <div className="flex items-center justify-between gap-1 mt-0.5">
                             <span className="text-[11px] opacity-80">{overlayRes.time || ''}</span>
                             <div className="flex items-center gap-1 shrink-0">
-                              {overlayRes.hasSpecialRequests && (
-                                <span
-                                  title={t('liveOverlay.specialRequestsTooltip')}
-                                  aria-label={t('liveOverlay.specialRequestsTooltip')}
-                                  className="text-amber-500 text-sm leading-none"
-                                >✦</span>
-                              )}
-                              {minutesLate != null && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-900 font-semibold leading-none whitespace-nowrap">
-                                  {t('liveOverlay.minLate', { minutes: minutesLate })}
-                                </span>
-                              )}
+                              <SpecialRequestsBadge
+                                hasSpecialRequests={overlayRes.hasSpecialRequests}
+                                className="text-sm"
+                              />
+                              <MinLateBadge secondsLate={overlay?.secondsLate} />
                             </div>
                           </div>
                         </>

@@ -1,6 +1,6 @@
 'use client'
 
-// Dashboard NOW zone (C6 P3-7).
+// Dashboard NOW zone (C6 P3-7, badges unified C6 P3-9).
 // Renders the currently-active reservations — those whose backend status
 // is Awaiting Guest or Occupied. Click on a row opens the shared
 // ReservationDetailPopup (the parent owns the popup mount + onClick).
@@ -10,17 +10,8 @@
 //   special-request icon, "X min late" badge if applicable.
 
 import { useTranslations } from 'next-intl'
-
-function MinLate({ secondsLate }) {
-  const t = useTranslations()
-  if (!secondsLate || secondsLate <= 600) return null
-  const minutes = Math.floor(secondsLate / 60)
-  return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-900 font-semibold leading-none whitespace-nowrap">
-      {t('popup.minutesLate', { minutes })}
-    </span>
-  )
-}
+import SpecialRequestsBadge from '../ui/SpecialRequestsBadge'
+import MinLateBadge from '../ui/MinLateBadge'
 
 export default function NowZone({ items = [], onPick }) {
   const t = useTranslations()
@@ -46,15 +37,17 @@ export default function NowZone({ items = [], onPick }) {
                 <span className="flex-1 min-w-0">
                   <span className="block truncate font-medium text-gray-900">
                     {r.guestName || '—'}
-                    {r.hasSpecialRequests && (
-                      <span className="text-amber-500 ml-1" aria-hidden="true">✦</span>
-                    )}
+                    <SpecialRequestsBadge
+                      hasSpecialRequests={r.hasSpecialRequests}
+                      specialRequests={r.specialRequests}
+                      className="ml-1"
+                    />
                   </span>
                   <span className="text-xs text-gray-500">
                     {r.tableLabel ? `${r.tableLabel} · ` : ''}×{r.partySize ?? '—'}
                   </span>
                 </span>
-                <MinLate secondsLate={r.secondsLate} />
+                <MinLateBadge secondsLate={r.secondsLate} />
               </button>
             </li>
           ))}

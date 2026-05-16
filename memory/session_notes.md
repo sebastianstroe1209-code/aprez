@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 item 7 (Dashboard rebuild) COMPLETE — replaced the pre-C6 three-tile dashboard with the §3.8 command-center layout: header strip (title + Bucharest clock + last-updated), NOW zone (Awaiting Guest + Occupied list), NEXT zone (8 upcoming with Show more → up to 24), SEARCH zone (debounced 300ms guest search), three stat tiles (today / pending / occupied). Responsive at xl (1280px): stat tiles collapse from the inline row into a right-column stack and NOW/NEXT go side-by-side. Reuses the existing `/api/restaurant/dashboard/summary` endpoint from C6 Phase 1; Show more lazy-loads via the existing `/reservations` route. All reservation rows in every zone open the shared ReservationDetailPopup. SPEC §15 §6.2 dashboard gaps marked partially-resolved. P3-8 (Calendar) + P3-9 (polish) ship as a single combined commit next.**
+**Last session: 2026-05-16. Tier C6 Phase 3 COMPLETE — final commit ships P3-8 (Calendar enhancements: now-indicator + click-empty-slot opens Quick Add prefilled + OOS-cell toast + click-occupied opens popup) and P3-9 (consistency pass: shared `<SpecialRequestsBadge>` + `<MinLateBadge>` mounted everywhere — Reservations rows, Calendar cells, Dashboard NOW+NEXT, Live overlay, popup header). QuickAddReservation now accepts `prefill.tableId` for the calendar flow with a passive clearable badge. CalendarNowIndicator uses ref-based DOM mutation so the parent calendar's React tree stays stable across minute ticks. SPEC §15 §6.4 / §3.10 / §3.12 / §3.13 entries marked resolved. All 9 Phase 3 items shipped. Next: end-of-C6 shift simulation by Cowork (Phase 5 per §8) before declaring C6 done and unblocking Tier D+E+F+I parallel block.**
 
 ## Where we left off
 
@@ -46,9 +46,59 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 item 7 (Dashboard rebuild) complete; P3-8+P3-9 (Calendar + polish, combined) is next, gated on Sebastian's approval
+## What's pending — Phase 3 COMPLETE (all 9 items shipped); end-of-C6 shift simulation is next
 
-**C6 P3-7 (Dashboard rebuild) shipped this session.** Biggest user-visible change in C6. Four new components + page rewrite + SPEC §15 §6.2 update.
+**C6 P3-8+P3-9 (Calendar enhancements + polish consistency pass) shipped this session as one combined commit.**
+
+P3-8 (Calendar enhancements):
+- New `<CalendarNowIndicator>` (`apps/restaurant/components/CalendarNowIndicator.jsx`) — separate component that owns its own setInterval and mutates the matching `<tr data-time>` directly via DOM API (`classList.add/remove`). Parent calendar's React tree stays stable across minute ticks per the "perf matters" requirement. Renders nothing when `selectedDate !== today`. Scrubs on unmount.
+- Calendar page (`apps/restaurant/app/dashboard/calendar/page.js`) click router:
+  - Existing reservation cell → opens `ReservationDetailPopup` (new mount).
+  - OUT_OF_SERVICE empty cell → fires `calendar.tableOutOfServiceToast` warning toast (3s).
+  - Other empty cell → opens `QuickAddReservation` prefilled with `{ date: selectedDate, time, tableId, tableLabel }`.
+- `QuickAddReservation` extended with `prefill.tableId` + `prefill.tableLabel` support: shows a passive `quickAdd.prefilledTable` badge at top of form with a × to clear the assignment (falls back to unassigned-AutoConfirmed per §9.5). POST body carries `tableId` when prefilled. No full table-picker — preserves the §3.3 "form-light" Quick Add stance.
+
+P3-9 (consistency pass):
+- New shared `<SpecialRequestsBadge>` (`apps/restaurant/components/ui/SpecialRequestsBadge.jsx`) — accepts either `hasSpecialRequests` (boolean) or `specialRequests` (string). Renders the ✦ icon with the specialRequests text as the hover tooltip when present.
+- New shared `<MinLateBadge>` (`apps/restaurant/components/ui/MinLateBadge.jsx`) — single threshold (`secondsLate > 600`), single visual treatment.
+- Applied across all surfaces (consistency pass):
+  - **Dashboard NOW + NEXT zones** — replaced inline `<MinLate>` helper + inline ✦ rendering with the shared components.
+  - **Reservations page rows** — added ✦ next to guest name + MinLateBadge alongside the status badge. Computes `secondsLate` client-side (`reservationSecondsLate()` helper) since the `/reservations` endpoint doesn't return it; the helper checks `table.status === 'AWAITING_GUEST' && !seatedAt && date === today` and derives minutes-late from time vs Bucharest now.
+  - **Live overlay** — refactored from inline ✦/late spans to the shared components.
+  - **Calendar cell** — ✦ rendered inside the reservation block.
+  - **ReservationDetailPopup header** — replaced two inline spans with the shared components. Deleted dead `minutesLate` const + `hasSpecial` no longer wraps the ✦ (the badge handles its own presence check).
+
+i18n keys added: `calendar.nowIndicator`, `calendar.tableOutOfServiceToast`, `quickAdd.prefilledTable`, `quickAdd.clearPrefilledTable`. The badge components reuse `popup.specialRequestsBadge` + `popup.minutesLate` for tooltip/label copy (already in locales).
+
+SPEC.md §15 updated:
+- §6.4 calendar interactions (click-block + tap-empty-slot) → resolved.
+- §3.10 Calendar "now" indicator → resolved.
+- §3.12 Special Requests inline visibility → resolved (shared component).
+- §3.13 Late-arrival display → resolved (shared component).
+- §5.3 Special Requests UI → noted as covered (schema + edit-mode + ✦ badge); diner-side mobile still pending Tier D.
+
+End-to-end smoke results:
+- All 6 dashboard routes serve 200 after wiring.
+- New component files: zero hardcoded English UI strings.
+- Seeded AWAITING_GUEST reservation 12 min past with `specialRequests: 'anniversary'`:
+  - `/dashboard/summary` row: `hasSpecialRequests: true`, time present ✓.
+  - `/layout/live` table: `secondsLate: 720` ✓.
+- C4 §5a socket smoke: 7/7 events fire ✓.
+- C1 dispatcher: 12/12 SPEC §10 events route ✓.
+- Schema unchanged.
+
+**C6 PHASE 3 COMPLETE.** All 9 items shipped this session:
+1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓
+2. ~~Pending reservation alert (3.6)~~ ✓
+3. ~~Live floor overlay (3.7)~~ ✓
+4. ~~Walk-in fast seating (3.4)~~ ✓
+5. ~~No-show with undo (3.5)~~ ✓
+6. ~~Edit existing reservation (3.9)~~ ✓
+7. ~~Dashboard rebuild (3.8)~~ ✓
+8. ~~Calendar enhancements (3.10)~~ ✓
+9. ~~Polish: ✦ + late-badge consistency (3.12 + 3.13)~~ ✓
+
+**C6 P3-7 (Dashboard rebuild) shipped earlier this session.** Biggest user-visible change in C6. Four new components + page rewrite + SPEC §15 §6.2 update.
 
 New components in `apps/restaurant/components/dashboard/`:
 - `StatTile.jsx` — reusable count card with left-border accent (primary / amber / blue / gray). Optional `href` makes the whole tile a Link.
@@ -285,24 +335,15 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 P3-8 (Calendar improvements) + P3-9 (Special request badges + action subtext + late-arrival display) ship as ONE combined commit next.** Per waiter_ux_strategy.md §3.10 (Calendar): "now" indicator that re-positions every minute when selectedDate===today; click empty cell opens Quick Add prefilled; click occupied cell opens popup. Per §3.11 / §3.12 / §3.13 (polish): always-visible ActionButton subtext (already shipped in Phase 2 component, just confirm wired everywhere), Special Requests ✦ badge in Reservations table + Calendar block popup (Dashboard + Live already have it), "X min late" badge in Reservations table + Calendar popup (Dashboard + Live already have it via P3-7 / P3-3). Combined commit because P3-9 items are small (mostly already implemented in shared components; just need wiring in remaining pages).
+**Next: C6 end-of-phase shift simulation (Phase 5 per memory/waiter_ux_strategy.md §8).** Cowork will drive a seeded test restaurant through a full waiter shift scenario per §8 Phase 5 — 20 reservations today (mixed statuses, special requests), 5 pending, 3 special requests, 2 late arrivals (one >15 min), 1 no-show, 1 OOS table, 1 walk-in already logged, 1 overlapping reservation conflict. Then exercise each §2 scenario from the strategy doc: pre-shift Dashboard scan, phone-in via Quick Add from each page (target <10s), app reservation alert + confirm, walk-in fast seating, mark no-show + undo, edit existing reservation, status updates from Live, socket update visible from another tab. If anything feels slower than a notebook, the relevant commit gets revisited before C6 is declared done.
 
-Per the no-individual-QA-gate policy after P3-7 Cowork pass: P3-8+P3-9 ships with internal smoke; comprehensive Cowork QA at end-of-C6 covers the full waiter shift scenario per §8 Phase 5.
-
-Remaining Phase 3 sequence (fastest-first):
-1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped earlier this session.
-2. ~~Pending reservation alert (3.6)~~ ✓ shipped earlier this session.
-3. ~~Live floor overlay (3.7)~~ ✓ shipped earlier this session.
-4. ~~Walk-in fast seating (3.4)~~ ✓ shipped earlier this session.
-5. ~~No-show with undo (3.5)~~ ✓ shipped earlier this session.
-6. ~~Edit existing reservation (3.9)~~ ✓ shipped earlier this session.
-7. ~~Dashboard rebuild (3.8)~~ ✓ shipped this session.
-8. **Calendar improvements (3.10) + polish (3.11 / 3.12 / 3.13)** — next, COMBINED single commit.
+Cowork will request a seeded fixture dataset before driving the shift QA. After Cowork pass, C6 is done and Tier D + E + F + I parallel block unblocks.
 
 **Resume sequence (in order):**
-1. **Cowork QA on `/dashboard`** at 375/768/1440 viewports — biggest user-visible change in C6. Verify three zones render, header clock ticks, search debounce works, stat tiles position correctly per breakpoint, click-to-popup flows from each zone.
-2. Sebastian gives explicit approval to begin C6 P3-8+P3-9 combined.
-3. P3-8+P3-9 (one commit, internal smoke only) → Phase 5 (end-to-end shift QA — comprehensive Cowork verification at end-of-C6) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian requests the seeded-fixture dataset for the end-of-C6 shift simulation.
+2. Cowork drives the simulation against `/dashboard`, `/live`, `/reservations`, `/calendar` at 375/768/1440 viewports.
+3. Any issues caught → small targeted commits.
+4. Cowork declares C6 done → Tier D + E + F + I parallel block (per `memory/waiter_ux_strategy.md` §6 tier order) → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.

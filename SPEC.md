@@ -697,6 +697,13 @@ These are tracked here until they're fixed; remove entries when each is resolved
 - `components/ReconnectingBanner.jsx` (C4) audited — already uses i18n key `common.reconnecting` (added C5); fixed responsive offset (`left-0 md:left-64`) so the banner doesn't leave a sidebar-shaped gap on phone viewports.
 - `lib/socket.js` (C4) audited — public-API contract documented as a docstring block at the top so Phase 2/3 components can subscribe without coupling to internals.
 
+**Resolved by Tier C6 Phase 3 items 8+9 (2026-05-16):**
+- **§6.4 calendar interactions** (click-block popup, tap-empty-slot to create, OOS warning) — Calendar page now opens the shared `ReservationDetailPopup` on existing-reservation cell clicks and the `QuickAddReservation` modal (prefilled with `date`/`time`/`tableId`) on empty-cell clicks. Clicking an OUT_OF_SERVICE cell fires a `calendar.tableOutOfServiceToast` warning toast without opening Quick Add. Edit-seats affordance + confirm-from-calendar are still deferred (admin scope / requires section-grid editing).
+- **§3.10 Calendar "now" indicator** — `<CalendarNowIndicator>` mounted in the calendar grid. Owns its own setInterval and mutates the matching `<tr data-time>` directly so the parent calendar's React tree stays stable across minute ticks. Renders nothing when `selectedDate !== today`.
+- **§3.12 Special Requests inline visibility** — shared `<SpecialRequestsBadge>` component now mounted on Reservations rows, Calendar block cells, Dashboard NOW + NEXT rows, Live overlay (refactored from inline to the shared component), and `ReservationDetailPopup` header. Single source-of-truth for the ✦ icon + tooltip.
+- **§3.13 Late-arrival display** — shared `<MinLateBadge>` component, single threshold (`secondsLate > 600`). Mounted on Live overlay, Dashboard NOW, ReservationDetailPopup header, and Reservations rows (Reservations computes `secondsLate` client-side from `res.time` + `res.table.status === 'AWAITING_GUEST'` since the `/reservations` endpoint doesn't return it; the other surfaces use the backend-computed value from `/layout/live` and `/dashboard/summary`).
+- **§3.10 QuickAdd `prefill.tableId`** — when QuickAdd opens from a calendar empty-cell click, the cell's `tableId` is pre-selected; a passive `quickAdd.prefilledTable` badge renders at the top of the form with a × to clear. POST body carries `tableId`; backend POST already accepted it.
+
 **Resolved by Tier C6 Phase 1 (2026-05-16):**
 - **New endpoints + amended shapes (locked data contracts for C6 UI work — full payload reference in `server/src/socket/events.md` for Socket.IO and inline in the route handlers for HTTP).**
   - `GET /api/restaurant/dashboard/summary` (new) — powers §3.8 Dashboard rebuild. Returns `{ currentTime, activeReservations[], upcomingReservations[8], pendingConfirmationCount, todayCount, occupiedCount }` in one round-trip.
@@ -733,14 +740,14 @@ These are tracked here until they're fixed; remove entries when each is resolved
 - **§5.6 modification request UI missing on mobile.** Backend route exists; no diner UI to initiate or to keep-or-cancel on rejection.
 - **§6.2 dashboard gaps — partially resolved by Tier C6 P3-7 (2026-05-16).** Dashboard rebuilt as the waiter command center per `memory/waiter_ux_strategy.md` §3.8: three-zone layout (NOW / NEXT / SEARCH) with stat tiles and a header clock; dashboard-level guest search now in place (debounced 300ms call to `/api/restaurant/reservations/search`); "Add Reservation" entry point is the global floating + button (P3-1) which is visible on the dashboard (and every other dashboard page) per §3.2. **Still deferred to Tier J / future:** notification feed (separate from real-time toast — toast covers the urgent path via P3-2), ban-client search on dashboard (low-frequency operation per §3.8 out-of-scope list).
 - **§6.3 service period filter on Live.** Calendar has it; Live page doesn't.
-- **§6.4 calendar interactions** beyond Bug 3: click-block popup actions, tap-empty-slot to create, edit-seats affordance, confirm-from-calendar. (Tier C6 — see memory/waiter_ux_strategy.md §3)
+<!-- §6.4 calendar interactions: click-block popup + tap-empty-slot resolved by C6 P3-8 — see Resolved section above. Edit-seats affordance + confirm-from-calendar remain deferred (admin scope + larger UX). -->
 - **§6.5 modification request UI missing on restaurant.** Backend route exists; no frontend approve/reject UI.
 - **§6.7 staff-side photos and menu PDF upload missing.** §6.7 lists them as editable; only admin-side endpoints exist.
 - **Confused Flow (b) instruction in past Cowork session.** "Diner books" should be tested via the mobile app, not via the staff create form. Spec is unchanged; just a testing/communication note.
 
 ### Missing features (IN scope, never built)
 - **§5.9 Account deletion (GDPR)** — diner-side "Delete my account" + backend endpoint that erases PII. Required for EU compliance.
-- **§5.3 Special requests free-text field** on reservation creation. (May exist on schema; UI not exposed.) (Tier C6 — see memory/waiter_ux_strategy.md §3)
+<!-- §5.3 Special requests UI: schema column added in Tier B; staff edit surface (`PUT /reservations/:id` body field + edit-mode field in popup) shipped in C6 P3-6; inline ✦ badge across all reservation surfaces shipped in C6 P3-9. Diner-side mobile field still pending Tier D. -->
 - **§6.8 Forgot password flow** for restaurant staff. Email-based reset.
 - **§6.4 Calendar enhancements** — show walk-ins, current-occupation segments, OOS blocks, past activity, "live" segment for currently-occupied tables. See §6.4 (updated 2026-04-30).
 - **§7.1 Photos upload** for restaurants in admin tool (cover + 5–10 gallery JPG/PNG).

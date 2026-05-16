@@ -9,6 +9,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { apiGet } from '../../lib/api'
+import SpecialRequestsBadge from '../ui/SpecialRequestsBadge'
 
 const STATUS_TONE = {
   PENDING:        'bg-yellow-100 text-yellow-800',
@@ -90,9 +91,11 @@ export default function NextZone({ items = [], onPick }) {
                 <span className="flex-1 min-w-0">
                   <span className="block truncate font-medium text-gray-900">
                     {r.guestName || (r.user ? `${r.user.firstName || ''} ${r.user.lastName || ''}`.trim() : '—')}
-                    {r.hasSpecialRequests || (r.specialRequests && String(r.specialRequests).trim()) ? (
-                      <span className="text-amber-500 ml-1" aria-hidden="true">✦</span>
-                    ) : null}
+                    <SpecialRequestsBadge
+                      hasSpecialRequests={r.hasSpecialRequests}
+                      specialRequests={r.specialRequests}
+                      className="ml-1"
+                    />
                   </span>
                   <span className="text-xs text-gray-500">
                     {r.tableLabel || (r.table?.tableNumber ? r.table.tableNumber : '')}

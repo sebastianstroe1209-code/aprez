@@ -96,7 +96,13 @@
     "availabilityCombining": "No exact-fit tables free — will need combining or override",
     "closedHoursWarning": "{time} is outside service periods. Create anyway?",
     "timeoutError": "Connection lost. Retry?",
-    "addDetails": "+ Add details"
+    "addDetails": "+ Add details",
+    "prefilledTable": "Assigning to {tableLabel}",
+    "clearPrefilledTable": "Clear assignment"
+  },
+  "calendar": {
+    "nowIndicator": "Now",
+    "tableOutOfServiceToast": "Table is out of service"
   },
   "dashboard": {
     "title": "Dashboard",

@@ -33,6 +33,8 @@ import { subscribe } from '../lib/socket'
 import { apiGet, apiPut } from '../lib/api'
 import { useToast } from './ui/ToastProvider'
 import ActionButton from './ui/ActionButton'
+import SpecialRequestsBadge from './ui/SpecialRequestsBadge'
+import MinLateBadge from './ui/MinLateBadge'
 
 function isWithinAnyServicePeriod(profile, time) {
   const periods = profile?.servicePeriods || []
@@ -187,9 +189,6 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
   const guest = guestNameOf(current)
   const tableLabel = tableLabelOf(current)
   const hasSpecial = !!(current.specialRequests && String(current.specialRequests).trim())
-  const minutesLate = current.secondsLate && current.secondsLate > 600
-    ? Math.floor(current.secondsLate / 60)
-    : null
   const statusKey = current.status ? `statusLabel.${current.status}` : null
 
   // C6 P3-5: no-show is handled inside the popup (closes + toast with
@@ -357,13 +356,10 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
             <div>
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <span>{guest || '—'}</span>
-                {hasSpecial && (
-                  <span
-                    title={t('popup.specialRequestsBadge')}
-                    aria-label={t('popup.specialRequestsBadge')}
-                    className="text-amber-500 text-xl"
-                  >✦</span>
-                )}
+                <SpecialRequestsBadge
+                  specialRequests={current.specialRequests}
+                  className="text-xl"
+                />
               </h2>
               <div className="text-sm text-gray-500 mt-1">{t('popup.title')}</div>
             </div>
@@ -522,11 +518,10 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
                     {t(statusKey)}
                   </span>
                 )}
-                {minutesLate != null && (
-                  <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-900">
-                    {t('popup.minutesLate', { minutes: minutesLate })}
-                  </span>
-                )}
+                <MinLateBadge
+                  secondsLate={current.secondsLate}
+                  className="px-2.5 py-1 text-xs"
+                />
               </div>
 
               {/* Detail grid */}

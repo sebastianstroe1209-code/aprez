@@ -96,7 +96,13 @@
     "availabilityCombining": "Nicio masă potrivită exact — va fi nevoie de combinare sau suprascriere",
     "closedHoursWarning": "{time} este în afara perioadelor de serviciu. Creezi oricum?",
     "timeoutError": "Conexiune pierdută. Reîncearcă?",
-    "addDetails": "+ Adaugă detalii"
+    "addDetails": "+ Adaugă detalii",
+    "prefilledTable": "Atribuită mesei {tableLabel}",
+    "clearPrefilledTable": "Renunță la atribuire"
+  },
+  "calendar": {
+    "nowIndicator": "Acum",
+    "tableOutOfServiceToast": "Masa nu este disponibilă"
   },
   "dashboard": {
     "title": "Panou",
