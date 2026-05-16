@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 2 (shared infrastructure) COMPLETE — ToastProvider/Toast/useToast, ActionButton (with subtext), ReservationDetailPopup (full §3.1 state-action matrix + socket-driven re-render), QuickAddReservation (smart defaults + live availability hint + pending-sync save + closed-hours warning), responsive at 375/768/1440. All mounted on `/dashboard/phase2-demo` for QA. C4 socket-lib + ReconnectingBanner audited (contract docstring added; banner now responsive at <768px). Real pages unchanged. C1/C4/C6-Phase1 regressions pass. Phase 3 (per-flow wiring, fastest-first order) is the next code work, gated on Sebastian's approval after he Cowork-QAs the demo route.**
+**Last session: 2026-05-16. Tier C6 Phase 3 item 1 (Quick Add everywhere) COMPLETE — floating "+" button mounted in dashboard layout, visible on Dashboard / Live / Reservations / Calendar, hidden on Settings; Alt+N global keyboard shortcut with input-focus guard; success toast via the now-mounted layout-level ToastProvider with name-interpolated copy. QuickAddReservation gained an `onSaveSuccess(saved)` callback so the trigger button can render its own toast while the standalone demo still uses the default. C1/C4/C6-Phase1 regressions pass. P3-2 (Pending reservation alert) is next, gated on Sebastian's approval after he Cowork-QAs the floating button + shortcut.**
 
 ## Where we left off
 
@@ -46,7 +46,22 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 2 complete; Phase 3 (per-flow wiring) is next, gated on Sebastian's approval
+## What's pending — Phase 3 item 1 (Quick Add everywhere) complete; P3-2 (pending alert) is next, gated on Sebastian's approval
+
+**C6 P3-1 (Quick Add everywhere) shipped this session.** New shared component `apps/restaurant/components/ui/QuickAddButton.jsx`:
+- Floating "+" pill bottom-right (`fixed bottom-6 right-6 z-40`, label hidden at <640px to keep it FAB-circular on phone).
+- Self-contained: owns modal-open state, mounts `QuickAddReservation`, listens for Alt+N globally with `isTypingTarget` guard (input/textarea/contenteditable skip the shortcut so typing names containing "n" doesn't trigger it), hides on `/dashboard/settings` via `usePathname()`.
+- Success toast `quickAdd.toast.created` ("Reservation saved for {name}", 4s) via the layout-mounted ToastProvider.
+
+Wiring:
+- `apps/restaurant/app/dashboard/layout.js` now wraps the page tree in `<ToastProvider>` and mounts `<QuickAddButton />` inside it, alongside the existing `<ReconnectingBanner />`. ToastProvider promoted from demo-only (Phase 2) to layout-level (Phase 3) — every dashboard child route can now `useToast`.
+- `QuickAddReservation` gained an `onSaveSuccess(saved)` callback; if provided, the parent owns the post-save UX. Standalone callers (the Phase 2 demo route) still get the default generic toast for back-compat.
+
+i18n keys added (`quickAdd.button.{label,tooltip}`, `quickAdd.toast.created`) in both ro and en.
+
+Verification: every route under `/dashboard/*` serves 200 including `/settings` (button absent there) and `/phase2-demo` (still works); zero hardcoded English in `QuickAddButton.jsx`; C4 §5a 7/7 events ✓; C1 dispatcher 12/12 events ✓.
+
+
 
 **C6 Phase 2 (shared infrastructure) shipped this session.** Components live in `apps/restaurant/components/`:
 - `ui/ToastProvider.jsx` + `ui/Toast.jsx` — context-based, stack max 3, info/success/warning/error/undo variants, tap-to-dismiss, top-right desktop / top-center phone.
@@ -107,9 +122,11 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 Phase 3 (per-flow wiring) is the next code work.** Awaiting Sebastian's explicit approval after he Cowork-QAs the `/dashboard/phase2-demo` route across 375/768/1440 viewports. Per waiter_ux_strategy.md §8 Phase 3, sequence is fastest-first:
-1. Quick Add everywhere (3.2 + 3.3) — mount QuickAdd trigger globally, QuickAdd modal already built.
-2. Pending reservation alert (3.6).
+**C6 P3-2 (Pending reservation alert) is the next code work.** Per waiter_ux_strategy.md §3.6: when a new pending reservation arrives via the mobile app, the restaurant platform fires a global toast (using the now-mounted ToastProvider) visible from any page, plus a persistent badge in the top header that increments and stays until pending reservations are resolved. Audio chime once, with per-session toggle in Settings. Subscribes to `reservation:pending-created` (already broadcasting via C4 + audited in C6 Phase 1 / `events.md`).
+
+Remaining Phase 3 sequence (fastest-first):
+1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped this session.
+2. **Pending reservation alert (3.6)** — next.
 3. Live floor overlay (3.7) — needs frontend migration from /layout to /layout/live.
 4. Walk-in fast seating (3.4).
 5. No-show with undo (3.5) — needs PUT /no-show wired + ToastProvider undo path.
@@ -121,9 +138,9 @@ Strategy contents (high level):
 Each Phase 3 item is its own commit per §8 Phase 4 (per-commit verification including viewport screenshots at 375/768/1440).
 
 **Resume sequence (in order):**
-1. Sebastian Cowork-QAs `/dashboard/phase2-demo` at all three viewports.
-2. Sebastian gives explicit approval to begin C6 Phase 3, item 1 (Quick Add everywhere).
-3. Phase 3 items 1-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian Cowork-QAs the floating "+" + Alt+N + Settings-hide at 375/768/1440.
+2. Sebastian gives explicit approval to begin C6 P3-2 (Pending reservation alert).
+3. Phase 3 items 2-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.

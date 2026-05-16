@@ -67,6 +67,13 @@
     "modificationDeferred": "Modification approval ships in Tier D."
   },
   "quickAdd": {
+    "button": {
+      "label": "+ New Reservation",
+      "tooltip": "Add a reservation (Alt+N)"
+    },
+    "toast": {
+      "created": "Reservation saved for {name}"
+    },
     "title": "Quick Add Reservation",
     "guestName": "Guest Name",
     "guestPhone": "Phone",

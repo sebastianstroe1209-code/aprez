@@ -67,6 +67,13 @@
     "modificationDeferred": "Aprobarea modificării vine în Tier D."
   },
   "quickAdd": {
+    "button": {
+      "label": "+ Rezervare nouă",
+      "tooltip": "Adaugă o rezervare (Alt+N)"
+    },
+    "toast": {
+      "created": "Rezervare salvată pentru {name}"
+    },
     "title": "Rezervare rapidă",
     "guestName": "Nume client",
     "guestPhone": "Telefon",

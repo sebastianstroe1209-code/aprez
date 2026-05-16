@@ -9,6 +9,11 @@
 //   isOpen: boolean
 //   onClose: () => void
 //   prefill?: { date, time, tableId } — used by §3.10 click-empty-slot.
+//   onSaveSuccess?: (savedReservation) => void — optional. When provided
+//     the parent owns the post-save feedback (toast copy, follow-up nav,
+//     etc.) and this component skips its built-in default toast. The
+//     callback receives the POST response body. Standalone callers (e.g.
+//     the Phase 2 demo route) omit it and get the default `savedToast`.
 //
 // Smart defaults per §3.3 EDGE CASES:
 //   - Date: today if open + time still in service window, else next open day
@@ -103,7 +108,7 @@ function isWithinAnyServicePeriod(profile, time) {
   return false
 }
 
-export default function QuickAddReservation({ isOpen, onClose, prefill }) {
+export default function QuickAddReservation({ isOpen, onClose, prefill, onSaveSuccess }) {
   const t = useTranslations()
   const { show: showToast } = useToast()
   const nameInputRef = useRef(null)
@@ -235,8 +240,14 @@ export default function QuickAddReservation({ isOpen, onClose, prefill }) {
         partySize: parseInt(form.partySize),
       }
       if (form.specialRequests.trim()) body.specialRequests = form.specialRequests.trim()
-      await apiPost('/api/restaurant/reservations', body)
-      showToast(t('quickAdd.savedToast'), { variant: 'success' })
+      const saved = await apiPost('/api/restaurant/reservations', body)
+      if (onSaveSuccess) {
+        // Parent owns post-save UX (toast copy, navigation, etc.).
+        onSaveSuccess(saved)
+      } else {
+        // Standalone fallback: built-in generic toast.
+        showToast(t('quickAdd.savedToast'), { variant: 'success' })
+      }
       onClose()
     } catch (err) {
       setError(err.message || 'Failed to save')

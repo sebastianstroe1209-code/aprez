@@ -7,6 +7,8 @@ import { useTranslations } from 'next-intl'
 import { apiGet } from '../../lib/api'
 import { getSocket, resetSocket } from '../../lib/socket'
 import ReconnectingBanner from '../../components/ReconnectingBanner'
+import ToastProvider from '../../components/ui/ToastProvider'
+import QuickAddButton from '../../components/ui/QuickAddButton'
 
 const navigationItems = [
   { key: 'dashboard', href: '/dashboard', icon: '📊' },
@@ -98,10 +100,15 @@ export default function DashboardLayout({ children }) {
           <h2 className="text-2xl font-bold text-gray-800">{t('common.platformTitle')}</h2>
         </header>
 
-        {/* Page Content */}
-        <main className="p-8">
-          {children}
-        </main>
+        {/* ToastProvider wraps the page tree so QuickAdd's success toast
+            (and future Phase 3 toasts) render across all dashboard pages.
+            QuickAddButton lives inside the provider so useToast resolves. */}
+        <ToastProvider>
+          <main className="p-8">
+            {children}
+          </main>
+          <QuickAddButton />
+        </ToastProvider>
       </div>
     </div>
   )
