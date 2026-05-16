@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 3 item 2 (Pending reservation alert) COMPLETE — `PendingReservationListener` mounted in dashboard layout subscribes to `reservation:pending-created` and fires a toast + increments a persistent header badge + plays a WebAudio chime. Suppression: toast skipped when user is already on `/dashboard/reservations` Pending tab (badge still increments). Toast Review button navigates to `?focus=<id>&tab=pending`; the reservations page seeds tab from URL and scrolls the focused row into view. Audio: WebAudio synth (no asset file), per-session toggle in Settings, one-time click-anywhere consent prompt. Side fix: diner POST `/api/reservations` now includes the user join in its `select` so the broadcast payload carries `guestName` for the toast. P3-3 (Live floor overlay) is next.**
+**Last session: 2026-05-16. Tier C6 Phase 3 item 3 (Live floor overlay) COMPLETE — Live page now calls both `/layout` (section/grid structure) and `/layout/live` (augmented per-table currentReservation/nextReservation/secondsLate) in parallel and merges by tableId. Each Occupied / Arriving Soon / Awaiting Guest card renders guest name (truncated 12 chars), party size, time, special-request ✦ badge, and "X min late" pill (threshold secondsLate > 600 / 10 min). Free + OOS cards unchanged. Click on a non-Free non-OOS table opens the shared ReservationDetailPopup from Phase 2; Free/OOS clicks are no-ops in this phase (Free becomes the walk-in target in P3-4). Card min-height bumped from 90px to 80px (per §3.7 spec floor for Tier I drag handles). Socket sub augmented: any reservation:* or walkin:* event triggers a quiet refetch since the overlay fields aren't in the `table:status-changed` payload. P3-4 (Walk-in fast seating) is next.**
 
 ## Where we left off
 
@@ -46,9 +46,26 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 3 item 2 (Pending alert) complete; P3-3 (Live floor overlay) is next, gated on Sebastian's approval
+## What's pending — Phase 3 item 3 (Live overlay) complete; P3-4 (Walk-in fast seating) is next, gated on Sebastian's approval
 
-**C6 P3-2 (Pending reservation alert) shipped this session.** New shared infrastructure:
+**C6 P3-3 (Live floor overlay) shipped this session.** Changes scoped to `apps/restaurant/app/dashboard/live/page.js`:
+- `loadLayout()` now fetches `/api/restaurant/layout` AND `/api/restaurant/layout/live` in parallel; merges per-table currentReservation/nextReservation/secondsLate into `liveByTableId` keyed by table id. /layout/live is the C6 Phase 1 augmented endpoint.
+- New `OVERLAY_STATUSES` set = OCCUPIED, ARRIVING_SOON, AWAITING_GUEST. Cards in these statuses render the inline overlay (guest name + party + time + badges). FREE + OUT_OF_SERVICE render as before (status label only).
+- Card layout switched from `flex items-center justify-center` to `flex items-stretch justify-between` so the four rows (number/seat, guest+party, time+badges, fallback) stack with sensible spacing. `min-h-[80px]` per §3.7 spec floor.
+- `truncateGuestName()` slices at 12 chars + ellipsis (deterministic char-based truncation per spec, not CSS-pixel-based).
+- "X min late" pill renders when `secondsLate > 600` (10 min per §3.13). Threshold computed client-side from the value the backend returns.
+- "✦" special-request badge renders when `hasSpecialRequests` is truthy.
+- Click handler routes Occupied / ARRIVING_SOON / AWAITING_GUEST clicks to ReservationDetailPopup with `popupReservation` derived from the appropriate slot. Free + OOS clicks are no-ops in P3-3 (Free becomes the walk-in target in P3-4 per user instruction). Confirm-mode click path (`?confirmReservationId=…`) preserved unchanged.
+- Socket subscription extended: subscribes to reservation:created/updated/cancelled and walkin:created/ended in addition to table:status-changed; any of those triggers `loadLayout(true)` (quiet refetch) to keep the overlay fields fresh — they aren't in the table:status-changed payload per `events.md`.
+- ReservationDetailPopup's onAction handler is a no-op for P3-3 (closes popup + quiet refetch); the actual action wiring lands in P3-4 (walk-in / Seat), P3-5 (no-show), P3-6 (edit).
+
+Note on the pre-existing status-change modal in Live: still mounted but now unreachable from non-Free / non-OOS tables (those route to the popup); Free + OOS tables are click-inert in P3-3. The modal's Status change + Seat-walk-in actions are temporarily orphaned. P3-4 will replace the Free-table click with a dedicated walk-in action sheet per §3.4; restaurant-side OOS toggle from the Live page is out of C6 scope per user's explicit instruction (admin tool §7.2 handles it).
+
+i18n keys added (`liveOverlay.{minLate,specialRequestsTooltip,party}`) in both ro and en. `minLate` uses ICU plural on minutes.
+
+Verification: all dashboard routes serve 200; /layout/live returns 15 tables with the augmented fields (sample table OCCUPIED with currentReservation=null because seed walk-in occupancies aren't reservation-tied — Cowork visual QA needed with a real AWAITING_GUEST reservation); new render code zero hardcoded English UI strings; C4 §5a 7/7 ✓; C1 dispatcher 12/12 ✓.
+
+**C6 P3-2 (Pending reservation alert) shipped earlier this session.** New shared infrastructure:
 - `components/PendingReservationListener.jsx` — mounted at dashboard layout. Subscribes to `reservation:pending-created` via the C4 `subscribe()`. On event: increments badge count, fires toast (variant=info, durationMs=8000, Review action → `/dashboard/reservations?focus=<id>&tab=pending`), plays audio chime if enabled + consented. Suppression: when `pathname === '/dashboard/reservations' && activeTab === 'pending'`, toast is skipped but badge still increments.
 - `components/PendingHeaderBadge.jsx` — amber pill in the persistent top header. Hidden when count === 0. Click navigates to Pending tab. Visible on every dashboard page (including Settings) per §3.6 cross-cutting requirement.
 - `lib/pendingContext.js` — `PendingCountProvider` (count + increment/decrement) and `ReservationsTabProvider` (the reservations page publishes its active tab via this so the listener can suppress).
@@ -140,13 +157,13 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 P3-3 (Live floor overlay) is the next code work.** Per waiter_ux_strategy.md §3.7: migrate the Live page from `GET /api/restaurant/layout` to `GET /api/restaurant/layout/live` so each table card renders guest name + party + time + special-request badge + late-arrival badge using the augmented payload C6 Phase 1 already ships. Keep card height ≥80px for the eventual drag-merge handles. Subscribe to `table:status-changed` for surgical updates (already wired in C4).
+**C6 P3-4 (Walk-in fast seating) is the next code work.** Per waiter_ux_strategy.md §3.4: tapping a Free or Arriving-Soon table on the Live floor plan opens a small inline action sheet (Seat walk-in? + party size stepper + optional "Add name") that POSTs `PUT /api/restaurant/tables/:id/seat`. P3-3 made Free-table clicks no-ops in anticipation — P3-4 replaces the no-op with the action-sheet flow. Edge cases (party > seat count override, OOS skip, Arriving-Soon-within-30-min warning) per §3.4.
 
 Remaining Phase 3 sequence (fastest-first):
 1. ~~Quick Add everywhere (3.2 + 3.3)~~ ✓ shipped earlier this session.
-2. ~~Pending reservation alert (3.6)~~ ✓ shipped this session.
-3. **Live floor overlay (3.7)** — next.
-4. Walk-in fast seating (3.4).
+2. ~~Pending reservation alert (3.6)~~ ✓ shipped earlier this session.
+3. ~~Live floor overlay (3.7)~~ ✓ shipped this session.
+4. **Walk-in fast seating (3.4)** — next.
 5. No-show with undo (3.5) — needs PUT /no-show wired + ToastProvider undo path.
 6. Edit existing reservation (3.9) — needs PUT /reservations/:id wired into ReservationDetailPopup edit mode.
 7. Dashboard rebuild (3.8) — largest, last.
@@ -156,9 +173,9 @@ Remaining Phase 3 sequence (fastest-first):
 Each Phase 3 item is its own commit per §8 Phase 4 (per-commit verification including viewport screenshots at 375/768/1440).
 
 **Resume sequence (in order):**
-1. Sebastian Cowork-QAs the pending alert toast + header badge + Settings audio toggle + suppression behavior at 375/768/1440.
-2. Sebastian gives explicit approval to begin C6 P3-3 (Live floor overlay).
-3. Phase 3 items 3-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian Cowork-QAs the Live overlay at 375/768/1440 with a seeded AWAITING_GUEST reservation (or simulated late one) to verify the "X min late" pill + ✦ badge + popup click path.
+2. Sebastian gives explicit approval to begin C6 P3-4 (Walk-in fast seating).
+3. Phase 3 items 4-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.

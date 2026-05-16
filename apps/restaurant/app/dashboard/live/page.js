@@ -2,10 +2,22 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { apiGet, apiPut } from '../../../lib/api'
 import { formatTime } from '../../../lib/format'
 import { subscribe } from '../../../lib/socket'
 import { useSocketRefetch } from '../../../lib/useSocketRefetch'
+import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
+
+// Statuses that, per memory/waiter_ux_strategy.md §3.7, carry an inline
+// guest+party+time overlay on the floor-plan card. Free + OOS render
+// status only (existing behavior preserved).
+const OVERLAY_STATUSES = new Set(['OCCUPIED', 'ARRIVING_SOON', 'AWAITING_GUEST'])
+
+function truncateGuestName(name) {
+  if (!name) return ''
+  return name.length > 12 ? name.slice(0, 12) + '…' : name
+}
 
 const statusColors = {
   FREE: { bg: 'bg-green-50', border: 'border-table-free', text: 'text-green-900', label: 'Free' },
@@ -16,11 +28,18 @@ const statusColors = {
 }
 
 export default function LiveFloorPlanPage() {
+  const t = useTranslations()
   const router = useRouter()
   const searchParams = useSearchParams()
   const confirmReservationId = searchParams.get('confirmReservationId')
 
   const [sections, setSections] = useState([])
+  // liveByTableId: { [tableId]: { currentReservation, nextReservation,
+  // secondsLate, occupancyDurationMin } } — augmented per-table data
+  // from the C6 Phase 1 amended /layout/live endpoint. Merged into the
+  // section/grid structure (which still comes from /layout) at render
+  // time so we don't lose the grid coordinates.
+  const [liveByTableId, setLiveByTableId] = useState({})
   const [activeSection, setActiveSection] = useState(null)
   const [selectedTable, setSelectedTable] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -30,6 +49,12 @@ export default function LiveFloorPlanPage() {
   const [guestCount, setGuestCount] = useState(1)
   const [modalAction, setModalAction] = useState('status') // 'status' or 'seat'
   const [lastRefresh, setLastRefresh] = useState(null)
+  // Reservation popup (P3-3 §3.7): opens when staff taps a table that has
+  // an associated reservation. Replaces the click-to-status-modal flow for
+  // OCCUPIED / ARRIVING_SOON / AWAITING_GUEST tables; Free + OOS tables
+  // are click-inert in this phase (Free becomes the walk-in target in P3-4).
+  const [popupReservation, setPopupReservation] = useState(null)
+  const [popupOpen, setPopupOpen] = useState(false)
 
   // Confirm-mode: when ?confirmReservationId=<id> is set, the page enters a
   // restricted picker mode. Eligible tables are highlighted; clicking one
@@ -45,7 +70,10 @@ export default function LiveFloorPlanPage() {
 
   // C4 real-time table-status updates (§5a). Patch table in place rather than
   // refetching the whole layout — keeps the live view responsive even at
-  // busy times.
+  // busy times. The overlay fields (currentReservation, nextReservation,
+  // secondsLate) aren't in the table:status-changed payload (see
+  // server/src/socket/events.md), so on reservation:* events we trigger a
+  // quiet refetch to keep the overlay in sync.
   useEffect(() => {
     const applyTableStatus = ({ tableId, newStatus, statusChangedAt }) => {
       setSections((prev) =>
@@ -58,15 +86,14 @@ export default function LiveFloorPlanPage() {
       )
       setLastRefresh(new Date())
     }
-    const onWalkinCreated = ({ tableId }) => {
-      // status:OCCUPIED already fired via table:status-changed alongside;
-      // walkin:created is a hook for future overlay updates (party size).
-      // No-op for the current MVP UI.
-    }
+    const refetchOverlay = () => { loadLayout(true) }
     const unsubs = [
       subscribe('table:status-changed', applyTableStatus),
-      subscribe('walkin:created', onWalkinCreated),
-      subscribe('walkin:ended', onWalkinCreated),
+      subscribe('reservation:created', refetchOverlay),
+      subscribe('reservation:updated', refetchOverlay),
+      subscribe('reservation:cancelled', refetchOverlay),
+      subscribe('walkin:created', refetchOverlay),
+      subscribe('walkin:ended', refetchOverlay),
     ]
     return () => unsubs.forEach((fn) => fn())
   }, [])
@@ -113,19 +140,33 @@ export default function LiveFloorPlanPage() {
     }
   }
 
-  // `quiet=true` skips touching the `loading` flag so background refetches
-  // (socket reconnect / visibilitychange / 30s tick) don't risk re-tripping
-  // the early-return at the top of the render and unmounting the open
-  // status/seat modal. Live currently doesn't setLoading(true) up top, so
-  // the guard is also defensive against future regressions.
+  // Two queries in parallel: /layout gives the section/grid structure
+  // (gridRows, gridColumns, table positions) — the augmented /layout/live
+  // endpoint returns a flat table list with currentReservation /
+  // nextReservation / secondsLate but no section nesting. Merging client-
+  // side by tableId keeps both shapes intact. `quiet=true` skips the
+  // loading flag for background refetches (socket / 30s tick / focus).
   const loadLayout = async (quiet = false) => {
     try {
-      const data = await apiGet('/api/restaurant/layout')
-      setSections(data)
+      const [sectionsData, liveTables] = await Promise.all([
+        apiGet('/api/restaurant/layout'),
+        apiGet('/api/restaurant/layout/live'),
+      ])
+      const byId = {}
+      for (const tbl of liveTables || []) {
+        byId[tbl.id] = {
+          currentReservation: tbl.currentReservation || null,
+          nextReservation: tbl.nextReservation || null,
+          secondsLate: tbl.secondsLate ?? null,
+          occupancyDurationMin: tbl.occupancyDurationMin ?? null,
+        }
+      }
+      setSections(sectionsData)
+      setLiveByTableId(byId)
       setLastRefresh(new Date())
       setActiveSection((prev) => {
-        if (prev && data.find((s) => s.id === prev)) return prev
-        return data.length > 0 ? data[0].id : null
+        if (prev && sectionsData.find((s) => s.id === prev)) return prev
+        return sectionsData.length > 0 ? sectionsData[0].id : null
       })
     } catch (err) {
       setError(err.message || 'Failed to load floor plan')
@@ -134,11 +175,31 @@ export default function LiveFloorPlanPage() {
     }
   }
 
+  // §3.7 click behavior: tables with an associated reservation open the
+  // shared ReservationDetailPopup. Free/OOS are click-inert in this phase
+  // (Free becomes the walk-in trigger in P3-4). Confirm-mode handling
+  // remains in the inline click handler so it isn't affected by this
+  // routing.
   const handleTableClick = (table) => {
-    setSelectedTable(table)
-    setShowModal(true)
-    setNewStatus(table.status)
-    setGuestCount(1)
+    const overlay = liveByTableId[table.id]
+    if (!OVERLAY_STATUSES.has(table.status)) {
+      // Free / OUT_OF_SERVICE — no-op per user instruction.
+      return
+    }
+    // ARRIVING_SOON points at nextReservation (it hasn't started yet);
+    // OCCUPIED and AWAITING_GUEST point at currentReservation.
+    const reservation =
+      table.status === 'ARRIVING_SOON'
+        ? (overlay?.nextReservation || overlay?.currentReservation)
+        : (overlay?.currentReservation || overlay?.nextReservation)
+    if (!reservation) return // overlay data not yet hydrated; ignore the tap
+
+    setPopupReservation({
+      ...reservation,
+      // The popup expects a table object for its tableLabel field.
+      table: { id: table.id, tableNumber: table.tableNumber, seatCount: table.seatCount },
+    })
+    setPopupOpen(true)
   }
 
   const handleStatusChange = async () => {
@@ -264,6 +325,19 @@ export default function LiveFloorPlanPage() {
                   const inConfirmMode = !!confirmReservationId
                   const isEligible = inConfirmMode && eligibleTableIds && eligibleTableIds.has(table.id)
                   const dimmed = inConfirmMode && !isEligible
+                  const overlay = liveByTableId[table.id]
+                  // ARRIVING_SOON shows the upcoming reservation;
+                  // OCCUPIED + AWAITING_GUEST show whoever is at (or due at)
+                  // the table now. Falls back across the two slots so a
+                  // mid-transition table doesn't lose its label.
+                  const overlayRes =
+                    table.status === 'ARRIVING_SOON'
+                      ? (overlay?.nextReservation || overlay?.currentReservation)
+                      : (overlay?.currentReservation || overlay?.nextReservation)
+                  const showOverlay = !inConfirmMode && OVERLAY_STATUSES.has(table.status) && overlayRes
+                  const minutesLate = overlay?.secondsLate && overlay.secondsLate > 600
+                    ? Math.floor(overlay.secondsLate / 60)
+                    : null
                   return (
                     <button
                       key={`${row}-${col}`}
@@ -275,24 +349,52 @@ export default function LiveFloorPlanPage() {
                         }
                       }}
                       disabled={dimmed}
-                      className={`border-2 rounded-lg p-3 transition-all ${
+                      className={`border-2 rounded-lg p-2 transition-all min-h-[80px] flex flex-col items-stretch justify-between text-left ${
                         dimmed ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'
                       } ${
                         isEligible ? 'ring-4 ring-primary ring-offset-2' : ''
                       } ${colors.bg} ${colors.border} ${colors.text}`}
-                      style={{ minHeight: '90px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <div className="text-lg font-bold">{table.tableNumber}</div>
-                      <div className="text-xs">{table.seatCount} seats</div>
-                      <div className="text-xs mt-1">{colors.label}</div>
+                      <div className="flex items-baseline justify-between gap-1">
+                        <span className="text-base font-bold leading-none">{table.tableNumber}</span>
+                        <span className="text-[10px] opacity-70 leading-none">{table.seatCount}</span>
+                      </div>
+                      {showOverlay ? (
+                        <>
+                          <div className="text-xs font-semibold mt-1 leading-tight flex items-center gap-1 min-w-0">
+                            <span className="truncate">{truncateGuestName(overlayRes.guestName)}</span>
+                            {overlayRes.partySize != null && (
+                              <span className="opacity-75 shrink-0">{t('liveOverlay.party', { count: overlayRes.partySize })}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between gap-1 mt-0.5">
+                            <span className="text-[11px] opacity-80">{overlayRes.time || ''}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {overlayRes.hasSpecialRequests && (
+                                <span
+                                  title={t('liveOverlay.specialRequestsTooltip')}
+                                  aria-label={t('liveOverlay.specialRequestsTooltip')}
+                                  className="text-amber-500 text-sm leading-none"
+                                >✦</span>
+                              )}
+                              {minutesLate != null && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-900 font-semibold leading-none whitespace-nowrap">
+                                  {t('liveOverlay.minLate', { minutes: minutesLate })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-[10px] mt-1 opacity-75">{colors.label}</div>
+                      )}
                     </button>
                   )
                 }
                 return (
                   <div
                     key={`${row}-${col}`}
-                    className="border border-dashed border-gray-200 rounded-lg"
-                    style={{ minHeight: '90px' }}
+                    className="border border-dashed border-gray-200 rounded-lg min-h-[80px]"
                   />
                 )
               })
@@ -371,6 +473,28 @@ export default function LiveFloorPlanPage() {
           <span>Last updated: {formatTime(lastRefresh.toISOString())}</span>
         )}
       </div>
+
+      {/* Shared ReservationDetailPopup (Phase 2). Opens when staff taps an
+          Occupied / Arriving Soon / Awaiting Guest table. Free + OOS taps
+          are no-ops in P3-3; Free becomes the walk-in trigger in P3-4.
+          onAction is wired to the existing reservation routes — for the
+          actions the popup exposes, the page falls back to a refetch so
+          the overlay stays consistent without page-specific handlers. */}
+      <ReservationDetailPopup
+        reservation={popupReservation}
+        isOpen={popupOpen}
+        onClose={() => { setPopupOpen(false); setPopupReservation(null) }}
+        onAction={(actionType, reservation) => {
+          // Phase 3-3 scope: render-only popup. The action handlers
+          // (confirm/cancel/seat/edit/etc.) land in subsequent P3-* items
+          // (P3-4 walk-in, P3-5 no-show with undo, P3-6 edit). For now,
+          // close the popup and trigger a refetch so the overlay
+          // reflects whatever the backend ends up doing via other paths.
+          setPopupOpen(false)
+          setPopupReservation(null)
+          loadLayout(true)
+        }}
+      />
     </div>
   )
 }

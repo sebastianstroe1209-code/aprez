@@ -98,6 +98,11 @@
     "timeoutError": "Connection lost. Retry?",
     "addDetails": "+ Add details"
   },
+  "liveOverlay": {
+    "minLate": "{minutes} {minutes, plural, one {min late} other {min late}}",
+    "specialRequestsTooltip": "Special requests",
+    "party": "×{count}"
+  },
   "pending": {
     "toast": {
       "message": "New request: {guestName}, {date} at {time}, party of {partySize}",

@@ -98,6 +98,11 @@
     "timeoutError": "Conexiune pierdută. Reîncearcă?",
     "addDetails": "+ Adaugă detalii"
   },
+  "liveOverlay": {
+    "minLate": "{minutes} {minutes, plural, one {min întârziere} other {min întârziere}}",
+    "specialRequestsTooltip": "Cerințe speciale",
+    "party": "×{count}"
+  },
   "pending": {
     "toast": {
       "message": "Cerere nouă: {guestName}, {date} la {time}, {partySize} {partySize, plural, one {persoană} other {persoane}}",
