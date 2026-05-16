@@ -5,7 +5,11 @@
     "loading": "Loading…",
     "logout": "Logout",
     "language": "Language",
-    "reconnecting": "Reconnecting…"
+    "reconnecting": "Reconnecting…",
+    "yes": "Yes",
+    "no": "No",
+    "close": "Close",
+    "retry": "Retry"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -23,16 +27,73 @@
   },
   "actions": {
     "confirm": "Confirm",
+    "confirmSubtext": "approve booking",
     "reject": "Reject",
     "seat": "Seat",
+    "seatSubtext": "mark arrived",
     "cancel": "Cancel",
     "complete": "Complete",
+    "completeSubtext": "mark finished",
     "pickTable": "Pick table",
+    "pickTableSubtext": "assign table",
+    "reassignTable": "Reassign table",
+    "edit": "Edit",
+    "noshow": "Mark no-show",
     "save": "Save"
   },
   "settings": {
     "title": "Settings",
     "languageSectionTitle": "Language",
     "languageSectionHint": "Interface language for this browser."
+  },
+  "toast": {
+    "undoLabel": "Undo",
+    "dismiss": "Dismiss"
+  },
+  "popup": {
+    "title": "Reservation Details",
+    "guest": "Guest",
+    "partySize": "Party Size",
+    "time": "Time",
+    "phone": "Phone",
+    "table": "Table",
+    "specialRequests": "Special Requests",
+    "status": "Status",
+    "specialRequestsBadge": "(special request)",
+    "minutesLate": "{minutes} min late",
+    "noTableAssigned": "No table assigned",
+    "noPhone": "No phone",
+    "noActionsAvailable": "No actions available for this state.",
+    "modificationDeferred": "Modification approval ships in Tier D."
+  },
+  "quickAdd": {
+    "title": "Quick Add Reservation",
+    "guestName": "Guest Name",
+    "guestPhone": "Phone",
+    "date": "Date",
+    "time": "Time",
+    "partySize": "Party Size",
+    "specialRequests": "Special Requests",
+    "optional": "(optional)",
+    "save": "Save",
+    "saving": "Saving…",
+    "savedToast": "Reservation saved",
+    "availabilityExact": "{count} {count, plural, one {table} other {tables}} available at {time} for party of {party}",
+    "availabilityLastOne": "1 table available — last one",
+    "availabilityCombining": "No exact-fit tables free — will need combining or override",
+    "closedHoursWarning": "{time} is outside service periods. Create anyway?",
+    "timeoutError": "Connection lost. Retry?",
+    "addDetails": "+ Add details"
+  },
+  "statusLabel": {
+    "PENDING": "Pending",
+    "CONFIRMED": "Confirmed",
+    "AUTO_CONFIRMED": "Auto-confirmed",
+    "AWAITING_GUEST": "Awaiting Guest",
+    "OCCUPIED": "Occupied",
+    "COMPLETED": "Completed",
+    "CANCELLED": "Cancelled",
+    "NO_SHOW": "No-show",
+    "MODIFICATION_PENDING": "Modification Pending"
   }
 }

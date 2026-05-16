@@ -1,11 +1,47 @@
 'use client'
 
-// Restaurant Platform Socket.IO client (Tier C4).
+// Restaurant Platform Socket.IO client (Tier C4; audited C6 Phase 2).
 // Single shared connection per browser tab. The JWT is read once at connect
 // time; if it changes (logout/login), call resetSocket() to rebuild.
 //
 // Backend contract: memory/waiter_ux_strategy.md §5a (events) + §4.4
-// (reconnect + page-focus refetch + reconnecting banner).
+// (reconnect + page-focus refetch + reconnecting banner). Payload shapes
+// for the seven events are documented in server/src/socket/events.md.
+//
+// ============================================
+// PUBLIC API (stable — Phase 2/3 components depend on these)
+// ============================================
+//
+//   getSocket()
+//     Lazily build (or return) the singleton. Returns null in SSR; on the
+//     client always returns a socket.io-client instance. Safe to call from
+//     React effects — multiple calls reuse the same connection.
+//
+//   resetSocket()
+//     Tear down the singleton (drops all listeners, disconnects). Call on
+//     logout so the next login rebuilds with a fresh JWT handshake.
+//
+//   subscribe(event, handler) -> unsubscribe
+//     Attach `handler(payload)` to one of the §5a events. Returns an
+//     unsubscribe function suitable for useEffect cleanup. Multiple
+//     subscribers to the same event are independent. Lazy-inits the socket
+//     so callers don't need to mount getSocket() first.
+//
+//   subscribeStatus(handler) -> unsubscribe
+//     Receive boolean connect/disconnect status. Fires once on subscribe
+//     with the current state. Used by the ReconnectingBanner to debounce
+//     short blips before showing the banner.
+//
+// Reconnect behavior (configured below): infinite retries, 500ms initial
+// backoff up to 30s max, websocket-first with polling fallback. Per §4.4
+// the client refetches the current page on (a) initial mount, (b) socket
+// reconnect, (c) document visibilitychange→visible — that wiring lives in
+// useSocketRefetch.js so individual pages can pass a stable `refetch` fn.
+//
+// Phase 3 note: the quiet-flag refetch pattern (commit 8497955) is
+// duplicated across reservations/live/calendar pages — they each define
+// `loadX(quiet)` with `setLoading(!quiet)` gating. Phase 3 consolidates
+// this into the shared components.
 
 import { io } from 'socket.io-client'
 

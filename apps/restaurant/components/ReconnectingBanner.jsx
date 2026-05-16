@@ -32,8 +32,12 @@ export default function ReconnectingBanner() {
   }, [])
 
   if (!show) return null
+  // Responsive offset: full-width on phone (<768px, where the sidebar will
+  // collapse into a hamburger in a later phase), offset-by-sidebar at
+  // tablet/desktop. Keeps the banner centered over the content area at all
+  // three §4.5 breakpoints (375 / 768 / 1440).
   return (
-    <div className="fixed top-0 left-64 right-0 z-50 bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2 text-sm font-medium text-center">
+    <div className="fixed top-0 left-0 md:left-64 right-0 z-50 bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2 text-sm font-medium text-center">
       {t('common.reconnecting')}
     </div>
   )

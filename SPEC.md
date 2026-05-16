@@ -688,6 +688,15 @@ These are tracked here until they're fixed; remove entries when each is resolved
 **Resolved by Tier C2 (2026-05-09):**
 - ~~Email transport stub~~ — `server/src/services/notifications/channels/email.js` now sends via the Resend SDK using `RESEND_API_KEY` / `RESEND_FROM_EMAIL` / `RESEND_FROM_NAME` from `server/.env`. Falls back to console.log with a one-time warning when the key is missing (dev environments don't crash). Failures from Resend are logged but don't propagate past the dispatcher, so a bad email can't break the calling flow. Unblocks the email pieces of §5.9 (account-deletion confirmation), §6.8 (staff forgot-password reset), and §7.1 (admin staff-credentials handoff) — those flows still need their own wiring in Tier D and admin polish.
 
+**Resolved by Tier C6 Phase 2 (2026-05-16):**
+- **Shared infrastructure components landed** in `apps/restaurant/components/`. Each component is standalone-verified via the `/dashboard/phase2-demo` route (not linked from sidebar; deleted in Phase 3 cleanup). Components are not yet wired into the real pages — that's Phase 3.
+  - `components/ui/ToastProvider.jsx` + `Toast.jsx` + `useToast` hook — stack max 3, variants (info/success/warning/error/undo), tap-to-dismiss, position top-right desktop / top-center mobile. All copy via i18n.
+  - `components/ui/ActionButton.jsx` — variants `confirm`, `reject`, `seat`, `pickTable`, `reassignTable`, `cancel`, `complete`, `edit`, `noshow`. Always-visible subtext for ambiguous variants (confirm/seat/pickTable/complete) per §3.11; unambiguous variants render label-only. Min 48×48 touch target per §4.5.
+  - `components/ReservationDetailPopup.jsx` — full §3.1 state-action matrix (Pending/Confirmed/AutoConfirmed/AwaitingGuest/Occupied/Completed/Cancelled/NoShow/ModificationPending). Subscribes to `reservation:updated` (re-renders in place) and `reservation:cancelled` (closes with toast). Special-requests badge, "X min late" badge when `secondsLate > 600`. Responsive: full-screen sheet <768px, centered 560px modal ≥768px.
+  - `components/QuickAddReservation.jsx` — smart defaults (next-open-day via `openingHours`, next round 30-min slot, party 2), autofocus name, optional details collapsible, live availability hint (300ms debounced call to `GET /api/restaurant/availability`), closed-hours warning before save, pending-sync save per §4.2 with 10s timeout fallback, Tab/Enter/Esc keyboard handling. Responsive same as popup.
+- `components/ReconnectingBanner.jsx` (C4) audited — already uses i18n key `common.reconnecting` (added C5); fixed responsive offset (`left-0 md:left-64`) so the banner doesn't leave a sidebar-shaped gap on phone viewports.
+- `lib/socket.js` (C4) audited — public-API contract documented as a docstring block at the top so Phase 2/3 components can subscribe without coupling to internals.
+
 **Resolved by Tier C6 Phase 1 (2026-05-16):**
 - **New endpoints + amended shapes (locked data contracts for C6 UI work — full payload reference in `server/src/socket/events.md` for Socket.IO and inline in the route handlers for HTTP).**
   - `GET /api/restaurant/dashboard/summary` (new) — powers §3.8 Dashboard rebuild. Returns `{ currentTime, activeReservations[], upcomingReservations[8], pendingConfirmationCount, todayCount, occupiedCount }` in one round-trip.
@@ -744,7 +753,7 @@ These are tracked here until they're fixed; remove entries when each is resolved
 - **§8.1 120-min Occupied timer + expiry alert.**
 - **§8.2 Table moving / combining** in LIVE mode. Drag-to-merge, sum seat counts, time-block scoped.
 - **§9.1 `specialRequests` column** on reservation schema (if not already present).
-<!-- Socket.IO real-time wiring resolved by Tier C4; i18n plumbing scaffold resolved by Tier C5; C6 Phase 1 data contracts (dashboard/summary, layout/live augment, availability, generic edit, TableActivity walk-in writes) resolved 2026-05-16 — see Resolved section above. -->
+<!-- Socket.IO real-time wiring resolved by Tier C4; i18n plumbing scaffold resolved by Tier C5; C6 Phase 1 data contracts and Phase 2 shared infrastructure (ToastProvider, ActionButton, ReservationDetailPopup, QuickAddReservation) resolved 2026-05-16 — see Resolved section above. Phase 3 wires components into pages. -->
 
 <!-- i18n plumbing scaffold landed in Tier C5; full string coverage is incremental from C6. -->
 - **§7.6 Auto-confirm toggle** UI in restaurant platform "Manage Profile" (toggle exists in admin but staff need it on the restaurant side per §6.7).

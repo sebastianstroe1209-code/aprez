@@ -5,7 +5,11 @@
     "loading": "Se încarcă…",
     "logout": "Deconectare",
     "language": "Limbă",
-    "reconnecting": "Se reconectează…"
+    "reconnecting": "Se reconectează…",
+    "yes": "Da",
+    "no": "Nu",
+    "close": "Închide",
+    "retry": "Reîncearcă"
   },
   "nav": {
     "dashboard": "Panou",
@@ -23,16 +27,73 @@
   },
   "actions": {
     "confirm": "Confirmă",
+    "confirmSubtext": "aprobă rezervarea",
     "reject": "Respinge",
     "seat": "Așază",
+    "seatSubtext": "marchează ca sosit",
     "cancel": "Anulează",
     "complete": "Finalizează",
+    "completeSubtext": "marchează ca încheiat",
     "pickTable": "Alege masa",
+    "pickTableSubtext": "atribuie masa",
+    "reassignTable": "Reatribuie masa",
+    "edit": "Modifică",
+    "noshow": "Marchează ne-prezentare",
     "save": "Salvează"
   },
   "settings": {
     "title": "Setări",
     "languageSectionTitle": "Limbă",
     "languageSectionHint": "Limba interfeței pentru acest browser."
+  },
+  "toast": {
+    "undoLabel": "Anulează",
+    "dismiss": "Închide"
+  },
+  "popup": {
+    "title": "Detalii rezervare",
+    "guest": "Client",
+    "partySize": "Persoane",
+    "time": "Ora",
+    "phone": "Telefon",
+    "table": "Masă",
+    "specialRequests": "Cerințe speciale",
+    "status": "Stare",
+    "specialRequestsBadge": "(cerință specială)",
+    "minutesLate": "{minutes} min întârziere",
+    "noTableAssigned": "Masă neatribuită",
+    "noPhone": "Fără telefon",
+    "noActionsAvailable": "Nicio acțiune disponibilă pentru această stare.",
+    "modificationDeferred": "Aprobarea modificării vine în Tier D."
+  },
+  "quickAdd": {
+    "title": "Rezervare rapidă",
+    "guestName": "Nume client",
+    "guestPhone": "Telefon",
+    "date": "Dată",
+    "time": "Oră",
+    "partySize": "Persoane",
+    "specialRequests": "Cerințe speciale",
+    "optional": "(opțional)",
+    "save": "Salvează",
+    "saving": "Se salvează…",
+    "savedToast": "Rezervare salvată",
+    "availabilityExact": "{count} {count, plural, one {masă disponibilă} other {mese disponibile}} la {time} pentru {party} {party, plural, one {persoană} other {persoane}}",
+    "availabilityLastOne": "1 masă disponibilă — ultima",
+    "availabilityCombining": "Nicio masă potrivită exact — va fi nevoie de combinare sau suprascriere",
+    "closedHoursWarning": "{time} este în afara perioadelor de serviciu. Creezi oricum?",
+    "timeoutError": "Conexiune pierdută. Reîncearcă?",
+    "addDetails": "+ Adaugă detalii"
+  },
+  "statusLabel": {
+    "PENDING": "În așteptare",
+    "CONFIRMED": "Confirmată",
+    "AUTO_CONFIRMED": "Auto-confirmată",
+    "AWAITING_GUEST": "Așteaptă oaspetele",
+    "OCCUPIED": "Ocupată",
+    "COMPLETED": "Finalizată",
+    "CANCELLED": "Anulată",
+    "NO_SHOW": "Ne-prezentare",
+    "MODIFICATION_PENDING": "Modificare în așteptare"
   }
 }

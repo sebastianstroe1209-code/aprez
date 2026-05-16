@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. Tier C6 Phase 1 (lock data contracts) COMPLETE and bench-verified — three new GETs (dashboard/summary, availability, layout/live augmented), one new PUT (generic reservation edit), tables/:id/seat now writes TableActivity. All seven §5a Socket.IO event payloads formally documented in `server/src/socket/events.md`. All endpoints within p95 budget after one edit-endpoint optimization. C1/C4 regressions pass. Schema unchanged. Phase 2 (shared infrastructure components) is the next code work, gated on Sebastian's approval.**
+**Last session: 2026-05-16. Tier C6 Phase 2 (shared infrastructure) COMPLETE — ToastProvider/Toast/useToast, ActionButton (with subtext), ReservationDetailPopup (full §3.1 state-action matrix + socket-driven re-render), QuickAddReservation (smart defaults + live availability hint + pending-sync save + closed-hours warning), responsive at 375/768/1440. All mounted on `/dashboard/phase2-demo` for QA. C4 socket-lib + ReconnectingBanner audited (contract docstring added; banner now responsive at <768px). Real pages unchanged. C1/C4/C6-Phase1 regressions pass. Phase 3 (per-flow wiring, fastest-first order) is the next code work, gated on Sebastian's approval after he Cowork-QAs the demo route.**
 
 ## Where we left off
 
@@ -46,9 +46,27 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — Phase 1 complete; Phase 2 (shared infrastructure) is next, gated on Sebastian's approval
+## What's pending — Phase 2 complete; Phase 3 (per-flow wiring) is next, gated on Sebastian's approval
 
-**C6 Phase 1 (lock data contracts) shipped this session.** New endpoints + amended shapes are the locked contract for Phase 3 features; Phase 2 components subscribe to these payloads directly.
+**C6 Phase 2 (shared infrastructure) shipped this session.** Components live in `apps/restaurant/components/`:
+- `ui/ToastProvider.jsx` + `ui/Toast.jsx` — context-based, stack max 3, info/success/warning/error/undo variants, tap-to-dismiss, top-right desktop / top-center phone.
+- `ui/ActionButton.jsx` — 9 variants, always-visible subtext for ambiguous (confirm/seat/pickTable/complete), 48×48 min target.
+- `ReservationDetailPopup.jsx` — full §3.1 state-action matrix; subscribes to reservation:updated for in-place re-render and reservation:cancelled for auto-close+toast; special-requests + late badges; responsive full-screen sheet <768px / centered 560px ≥768px.
+- `QuickAddReservation.jsx` — smart defaults via `/api/restaurant/profile`, live availability hint (300ms debounced `/availability` calls), closed-hours warning, pending-sync save with 10s timeout, full keyboard handling.
+
+Standalone QA at `/dashboard/phase2-demo` (not linked from sidebar; deleted in Phase 3 cleanup). Real pages (Reservations / Live / Calendar / Dashboard) untouched — components are built, not wired.
+
+Audits also done this commit:
+- `lib/socket.js` — added public-API docstring contract block; no behavioral change.
+- `components/ReconnectingBanner.jsx` (C4) — already uses `common.reconnecting` i18n key; fixed responsive offset (`left-0 md:left-64`) so the banner doesn't leave a sidebar-shaped gap on phone viewports.
+
+Verification this commit:
+- All four dev servers serve 200 after Phase 2 changes (`/dashboard/phase2-demo`, `/dashboard/reservations`, `/dashboard/live`, `/dashboard/calendar`, `/dashboard/settings`).
+- New component files: zero hardcoded English UI strings (greppped). Demo route headers (e.g. "Phase 2 demo", "Toast", section labels) intentionally English — dev-only harness, not user-facing.
+- C4 §5a socket smoke: 7/7 events fire ✓.
+- C6 Phase 1 bench: 7/7 endpoints within budget ✓ (PUT edit drifted to p95=555ms on the first run, well within Railway-latency variance — re-run came in at p95=214ms).
+
+**C6 Phase 1 (lock data contracts) shipped earlier this session.** New endpoints + amended shapes are the locked contract for Phase 3 features; Phase 2 components subscribe to these payloads directly.
 
 Endpoints (full reference: `SPEC.md` §15 resolved section + `server/src/socket/events.md`):
 - `GET /api/restaurant/dashboard/summary` — NOW/NEXT/counts in one round-trip.
@@ -89,11 +107,23 @@ Strategy contents (high level):
   4. **Per-commit verification** including explicit viewport screenshots at 375 / 768 / 1440.
   5. **End-to-end shift QA** with seeded mixed-state restaurant (20 reservations, 5 pending, walk-in, no-show, conflict, OOS table).
 
-**C6 Phase 2 (shared infrastructure components) is the next code work.** Awaiting Sebastian's explicit approval. Per waiter_ux_strategy.md §8 Phase 2: global toast/notification provider (used by 3.5 undo + 3.6 pending alert), Socket.IO client handler audit (mostly done in C4, confirm reconnect+refetch matches §4.4), shared ReservationDetailPopup component (§3.1), shared ActionButton with subtext support (§3.11), reusable QuickAddReservation modal (§3.2/§3.3), "Reconnecting…" banner audit (already shipped in C4 — confirm visual matches Cowork QA expectations). One commit per shared component.
+**C6 Phase 3 (per-flow wiring) is the next code work.** Awaiting Sebastian's explicit approval after he Cowork-QAs the `/dashboard/phase2-demo` route across 375/768/1440 viewports. Per waiter_ux_strategy.md §8 Phase 3, sequence is fastest-first:
+1. Quick Add everywhere (3.2 + 3.3) — mount QuickAdd trigger globally, QuickAdd modal already built.
+2. Pending reservation alert (3.6).
+3. Live floor overlay (3.7) — needs frontend migration from /layout to /layout/live.
+4. Walk-in fast seating (3.4).
+5. No-show with undo (3.5) — needs PUT /no-show wired + ToastProvider undo path.
+6. Edit existing reservation (3.9) — needs PUT /reservations/:id wired into ReservationDetailPopup edit mode.
+7. Dashboard rebuild (3.8) — largest, last.
+8. Calendar improvements (3.10).
+9. Special request badges + action subtext + late-arrival display (3.11 / 3.12 / 3.13).
+
+Each Phase 3 item is its own commit per §8 Phase 4 (per-commit verification including viewport screenshots at 375/768/1440).
 
 **Resume sequence (in order):**
-1. Sebastian gives explicit approval to begin C6 Phase 2.
-2. C6 Phase 2 → Phase 3 (per-flow features, fastest-first) → Phase 4 (per-commit viewport verification) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
+1. Sebastian Cowork-QAs `/dashboard/phase2-demo` at all three viewports.
+2. Sebastian gives explicit approval to begin C6 Phase 3, item 1 (Quick Add everywhere).
+3. Phase 3 items 1-9 (one commit each) → Phase 4 (per-commit viewport verification, already baked in) → Phase 5 (end-to-end shift QA) → Tier D + E + F + I parallel block → G + H → J.
 
 Reference IDs from this session (for context if QA questions come up):
 - C2 smoke email: Resend ID `3151f463-85b8-4aaf-9c35-4dcb98a28ad0` → sebastian.stroe1209@gmail.com.
