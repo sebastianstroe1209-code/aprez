@@ -101,6 +101,39 @@
     "prefilledTable": "Atribuită mesei {tableLabel}",
     "clearPrefilledTable": "Renunță la atribuire"
   },
+  "login": {
+    "title": "ApRez Restaurant",
+    "username": "Utilizator",
+    "password": "Parolă",
+    "submit": "Conectare",
+    "submitting": "Se conectează…",
+    "forgotLink": "Ai uitat parola?",
+    "errorInvalid": "Date de autentificare incorecte."
+  },
+  "forgot": {
+    "title": "Resetare parolă",
+    "subtitle": "Introdu utilizatorul sau emailul. Îți vom trimite un link de resetare.",
+    "field": "Utilizator sau email",
+    "submit": "Trimite link",
+    "submitting": "Se trimite…",
+    "success": "Dacă există un cont, am trimis linkul de resetare pe emailul înregistrat.",
+    "backToLogin": "Înapoi la autentificare"
+  },
+  "reset": {
+    "title": "Setează o parolă nouă",
+    "subtitle": "Alege o parolă nouă pentru contul tău.",
+    "newPassword": "Parolă nouă",
+    "confirmPassword": "Confirmă parola",
+    "submit": "Salvează parola",
+    "submitting": "Se salvează…",
+    "success": "Parolă actualizată. Te poți autentifica acum.",
+    "errorMismatch": "Parolele nu coincid.",
+    "errorMissingToken": "Link invalid sau lipsă token.",
+    "errorInvalidToken": "Link invalid sau necunoscut.",
+    "errorTokenExpired": "Linkul a expirat. Solicită unul nou.",
+    "errorTokenUsed": "Linkul de resetare a fost deja folosit.",
+    "errorMinLength": "Parola trebuie să aibă cel puțin 6 caractere."
+  },
   "calendar": {
     "nowIndicator": "Acum",
     "tableOutOfServiceToast": "Masa nu este disponibilă"

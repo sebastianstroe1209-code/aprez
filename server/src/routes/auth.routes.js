@@ -1,9 +1,22 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { generateToken } = require('../middleware/auth');
+const { sendEmail } = require('../services/notifications/channels/email');
 
 const router = express.Router();
+
+// Reset-link target. Override via env when deploying behind a real domain.
+const RESTAURANT_FRONTEND_URL = process.env.RESTAURANT_FRONTEND_URL || 'http://localhost:3001';
+
+// SPEC §3.3 / §6.8: reset link valid for 1 hour, single-use.
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+function generateResetToken() {
+  // 32 random bytes → 64-hex-char token. Plenty of entropy; URL-safe.
+  return crypto.randomBytes(32).toString('hex');
+}
 
 // ============================================
 // USER REGISTRATION
@@ -203,6 +216,147 @@ router.post('/restaurant/login', [
       },
       token,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// RESTAURANT STAFF FORGOT-PASSWORD (Tier D commit 1, SPEC §6.8)
+// Single-use email-delivered reset token, 1-hour TTL. Response is
+// always 200 with a neutral message — don't leak whether the username
+// exists. The actual email recipient is RestaurantStaff.email (admin-
+// set per §6.8) with a fallback to the restaurant's contact email.
+// ============================================
+router.post('/restaurant/forgot-password', [
+  body('usernameOrEmail').trim().notEmpty().withMessage('Username or email is required'),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: { message: errors.array()[0].msg } });
+    }
+    const prisma = req.app.get('prisma');
+    const { usernameOrEmail } = req.body;
+
+    // Always-200 success copy. Computed up front so every code path below
+    // returns the same string and timing characteristics are similar.
+    const neutralResponse = {
+      message: 'If an account exists, we have sent a reset link to the email on file.',
+    };
+
+    const staff = await prisma.restaurantStaff.findFirst({
+      where: {
+        OR: [
+          { username: usernameOrEmail },
+          { email: usernameOrEmail },
+        ],
+      },
+      include: { restaurant: { select: { email: true, isActive: true, nameEn: true } } },
+    });
+
+    if (!staff || !staff.restaurant.isActive) {
+      // Match the neutral response shape so an attacker can't tell from
+      // the wire whether the username existed.
+      return res.json(neutralResponse);
+    }
+
+    const recipient = staff.email || staff.restaurant.email;
+    if (!recipient) {
+      console.warn(`[auth] forgot-password requested for staff ${staff.id} but no email on file (staff.email + restaurant.email both null); skipping send.`);
+      return res.json(neutralResponse);
+    }
+
+    // Invalidate any prior outstanding tokens for this staff so the link
+    // they receive is the only valid one. Avoids the case where an old
+    // unused token is still active when a new one is issued.
+    await prisma.passwordResetToken.updateMany({
+      where: { userId: staff.id, userType: 'restaurant', usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const token = generateResetToken();
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: staff.id,
+        userType: 'restaurant',
+        token,
+        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    const resetLink = `${RESTAURANT_FRONTEND_URL}/reset-password?token=${encodeURIComponent(token)}`;
+    await sendEmail(prisma, null, {
+      to: recipient,
+      subject: `Reset your password — ${staff.restaurant.nameEn}`,
+      text:
+        `Hi ${staff.displayName || staff.username},\n\n` +
+        `A password reset was requested for your ${staff.restaurant.nameEn} staff account on ApRez.\n\n` +
+        `Click the link below to set a new password. The link is valid for 1 hour and can only be used once.\n\n` +
+        `${resetLink}\n\n` +
+        `If you didn't request this, you can safely ignore this email — your password won't change.\n\n` +
+        `— ApRez`,
+      html:
+        `<p>Hi ${staff.displayName || staff.username},</p>` +
+        `<p>A password reset was requested for your <strong>${staff.restaurant.nameEn}</strong> staff account on ApRez.</p>` +
+        `<p><a href="${resetLink}" style="display:inline-block;padding:10px 16px;background:#22c55e;color:#fff;border-radius:6px;text-decoration:none;font-weight:600">Reset your password</a></p>` +
+        `<p>Or copy this link into your browser: <code>${resetLink}</code></p>` +
+        `<p>The link is valid for 1 hour and can only be used once.</p>` +
+        `<p>If you didn't request this, you can safely ignore this email — your password won't change.</p>` +
+        `<p>— ApRez</p>`,
+    });
+
+    res.json(neutralResponse);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// RESTAURANT STAFF RESET-PASSWORD (Tier D commit 1)
+// Validates the token (not expired, not used) and updates the staff
+// row's passwordHash. Returns 400 with a specific code for expired /
+// invalid / used tokens so the frontend can show the right copy.
+// ============================================
+router.post('/restaurant/reset-password', [
+  body('token').trim().notEmpty().withMessage('Token is required'),
+  body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: { message: errors.array()[0].msg } });
+    }
+    const prisma = req.app.get('prisma');
+    const { token, newPassword } = req.body;
+
+    const row = await prisma.passwordResetToken.findUnique({ where: { token } });
+    if (!row || row.userType !== 'restaurant') {
+      return res.status(400).json({ error: { code: 'invalid-token', message: 'Invalid or unknown reset token.' } });
+    }
+    if (row.usedAt) {
+      return res.status(400).json({ error: { code: 'token-used', message: 'This reset link has already been used.' } });
+    }
+    if (row.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ error: { code: 'token-expired', message: 'This reset link has expired. Request a new one.' } });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    // Mark token used + update password in a single transaction so a
+    // mid-flight crash can't leave the token usable.
+    await prisma.$transaction([
+      prisma.restaurantStaff.update({
+        where: { id: row.userId },
+        data: { passwordHash },
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: row.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    res.json({ message: 'Password updated. You can now log in.' });
   } catch (error) {
     next(error);
   }

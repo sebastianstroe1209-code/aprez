@@ -4,7 +4,7 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-16. TIER C6 LOCKED AS COMPLETE.** All 9 Phase 3 items + 2 fix-the-fix commits (the derived-AwaitingGuest hardening) verified by Cowork's end-of-C6 shift QA on the seeded fixture. Derived-AwaitingGuest path works from Dashboard, Live, and Calendar popup mounts. Shift fixture cleaned up post-QA — 21 reservations + 1 TableActivity deleted, 7 touched tables restored to pre-fixture status. **Next: Tier D + E + F + I parallel block per `memory/waiter_ux_strategy.md` §6 tier order, gated on Sebastian picking the order or approving all-parallel.**
+**Last session: 2026-05-16. Tier D commit 1 (restaurant-staff forgot-password) SHIPPED.** Schema additions (`RestaurantStaff.email`, `PasswordResetToken` polymorphic table with `userType` field) pushed to Railway clean. Backend endpoints `POST /api/auth/restaurant/forgot-password` (neutral 200) and `POST /api/auth/restaurant/reset-password` (validates token, bcrypt-hashes new password, marks token used in a transaction). Frontend pages `/forgot-password` + `/reset-password` + "Forgot password?" link on `/login`. End-to-end smoke 5/5 paths green; Resend delivered the test email (id `526a24ba-c5a5-4473-acc0-0959c395f588`). All regressions (C4 §5a, C1 dispatcher, C6 popup actions) pass. SPEC §15 §6.8 marked resolved. **Tier D commit 2 (mobile diner forgot-password + account deletion + phone-collection prompt) is next; gated on Sebastian's Cowork QA of the staff reset link.**
 
 ## Where we left off
 
@@ -46,7 +46,45 @@ type: project
 
 - **A2 column drop still pending.** The deprecated `from_waitlist` column on `reservations` is still present (~15 rows of default-`false`). Drop only when Sebastian explicitly approves `--accept-data-loss` for that one column.
 
-## What's pending — TIER C6 LOCKED AS COMPLETE; Tier D + E + F + I parallel block is next
+## What's pending — Tier D commit 1 shipped; commit 2 (mobile diner) is next
+
+**Tier D commit 1 (restaurant-staff forgot-password) shipped this session.**
+
+Schema (additive, no `--accept-data-loss`):
+- `RestaurantStaff.email String?` — per-staff contact email set by admin during account creation (SPEC §6.8). Nullable so existing seeded rows don't need backfill; reset endpoint falls back to `Restaurant.email` when null.
+- `PasswordResetToken` — polymorphic across user types: `{ id, userId, userType ('user' | 'restaurant' | 'admin'), token (unique), expiresAt, usedAt, createdAt }`. Same table will serve diner mobile in commit 2.
+
+Backend (`server/src/routes/auth.routes.js`):
+- `POST /api/auth/restaurant/forgot-password` — accepts `{ usernameOrEmail }`, always returns 200 with a neutral message (no leak about whether the username exists). On match: invalidates prior outstanding tokens for the staff, generates a fresh 32-byte hex token, sends a reset email via the C2 Resend transport. Recipient: `staff.email` (preferred) or `staff.restaurant.email` (fallback). If both null, logs a warning and still returns the neutral 200.
+- `POST /api/auth/restaurant/reset-password` — accepts `{ token, newPassword }`. Validates token unique-lookup, then in order: matches `userType === 'restaurant'` (else 400 `invalid-token`), not used (else 400 `token-used`), not expired (else 400 `token-expired`). On success: bcrypt-hashes the new password, runs `staff.update` + `token.update(usedAt)` in a single transaction so a mid-flight crash can't leave the token usable.
+- New env var: `RESTAURANT_FRONTEND_URL` (defaults to `http://localhost:3001`) — base for the reset link `${URL}/reset-password?token=…`.
+
+Frontend (`apps/restaurant/`):
+- `/forgot-password` page — single-field form, neutral success message on submit, "Back to login" link.
+- `/reset-password` page — reads `?token=`, two password fields (new + confirm), client-side mismatch + min-length checks. Surfaces backend error codes (`token-expired` / `token-used` / `invalid-token`) as specific i18n copy. On success: 2s celebration → `router.push('/login')` (no auto-login — staff confirms by typing the new password).
+- `/login` page — i18n'd (was hardcoded English) + "Forgot password?" link below the submit button.
+- i18n keys added: `login.*` (7), `forgot.*` (7), `reset.*` (13) — all in `ro` and `en`.
+
+Email template (`server/src/routes/auth.routes.js` inline):
+- Subject: `Reset your password — {restaurantName}`.
+- Text + HTML versions. HTML version has a primary-coloured CTA button + a fallback "or copy this link" with the raw URL.
+- One-hour validity message + "ignore if you didn't request" copy.
+
+End-to-end smoke (all 5 paths green):
+- (a) `POST forgot-password` with valid username → 200 neutral + token row written with `expiresAt = now+1h`.
+- (b) `POST reset-password` with valid token + 6+ char password → 200 + password updated.
+- (c) `POST reset-password` with expired token → 400 + `code: token-expired`.
+- (d) `POST reset-password` with used token → 400 + `code: token-used`.
+- (e) `POST /restaurant/login` with new password → 200 + JWT issued.
+- Resend log line: `[email:sent] id=526a24ba-c5a5-4473-acc0-0959c395f588 to=sebastian.stroe1209@gmail.com subject="Reset your password — La Mama"`.
+
+Regressions: C4 §5a 7/7 ✓, C1 dispatcher 12/12 ✓, C6 popup-actions 12/12 ✓. All four dev servers serve 200.
+
+SPEC.md §15 §6.8 marked resolved.
+
+**Tier D commit 2 — coming next**: mobile diner forgot-password (mirrors the staff flow, reuses `PasswordResetToken` with `userType='user'`), account deletion §5.9 GDPR (anonymizes past reservation rows + erases PII + logs user out), phone-collection prompt after first reservation per SPEC §3.1 / §10 caveat.
+
+
 
 **C6 closure (2026-05-16):**
 - All 9 Phase 3 items shipped + Cowork-verified.

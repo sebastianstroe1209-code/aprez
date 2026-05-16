@@ -101,6 +101,39 @@
     "prefilledTable": "Assigning to {tableLabel}",
     "clearPrefilledTable": "Clear assignment"
   },
+  "login": {
+    "title": "ApRez Restaurant",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Login",
+    "submitting": "Logging in…",
+    "forgotLink": "Forgot password?",
+    "errorInvalid": "Invalid credentials."
+  },
+  "forgot": {
+    "title": "Reset your password",
+    "subtitle": "Enter your username or email. We'll send a reset link to the email on file.",
+    "field": "Username or email",
+    "submit": "Send reset link",
+    "submitting": "Sending…",
+    "success": "If an account exists, we have sent a reset link to the email on file.",
+    "backToLogin": "Back to login"
+  },
+  "reset": {
+    "title": "Set a new password",
+    "subtitle": "Pick a new password for your account.",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "submit": "Save password",
+    "submitting": "Saving…",
+    "success": "Password updated. You can log in now.",
+    "errorMismatch": "Passwords don't match.",
+    "errorMissingToken": "Reset link is invalid or missing the token.",
+    "errorInvalidToken": "Invalid or unknown reset link.",
+    "errorTokenExpired": "This reset link has expired. Request a new one.",
+    "errorTokenUsed": "This reset link has already been used.",
+    "errorMinLength": "Password must be at least 6 characters."
+  },
   "calendar": {
     "nowIndicator": "Now",
     "tableOutOfServiceToast": "Table is out of service"

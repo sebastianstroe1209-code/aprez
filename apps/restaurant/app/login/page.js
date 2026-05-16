@@ -2,9 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 
 export default function LoginPage() {
   const router = useRouter()
+  const t = useTranslations()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -25,14 +28,14 @@ export default function LoginPage() {
       })
 
       if (!response.ok) {
-        throw new Error('Invalid credentials')
+        throw new Error(t('login.errorInvalid'))
       }
 
       const data = await response.json()
       localStorage.setItem('restaurantToken', data.token)
       router.push('/dashboard')
     } catch (err) {
-      setError(err.message || 'Login failed. Please try again.')
+      setError(err.message || t('login.errorInvalid'))
     } finally {
       setLoading(false)
     }
@@ -41,7 +44,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center mb-8">ApRez Restaurant</h1>
+        <h1 className="text-3xl font-bold text-center mb-8">{t('login.title')}</h1>
 
         {error && (
           <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
@@ -52,7 +55,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Username
+              {t('login.username')}
             </label>
             <input
               type="text"
@@ -66,7 +69,7 @@ export default function LoginPage() {
 
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Password
+              {t('login.password')}
             </label>
             <input
               type="password"
@@ -83,9 +86,16 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-primary text-white font-medium py-2 px-4 rounded hover:bg-primary-dark disabled:bg-gray-400 transition-colors"
           >
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? t('login.submitting') : t('login.submit')}
           </button>
         </form>
+
+        {/* Tier D commit 1 — forgot-password entry point per SPEC §6.8. */}
+        <div className="mt-4 text-center">
+          <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+            {t('login.forgotLink')}
+          </Link>
+        </div>
       </div>
     </div>
   )

@@ -366,6 +366,11 @@ model RestaurantStaff {
   id             String     @id @default(uuid())
   restaurantId   String     @map("restaurant_id")
   username       String     @unique
+  // Per-staff contact email — set by admin during account creation
+  // (SPEC §6.8). Used by the forgot-password reset flow. Nullable so
+  // existing seeded rows don't need backfill; reset endpoint falls
+  // back to Restaurant.email when staff.email is null.
+  email          String?
   passwordHash   String     @map("password_hash")
   displayName    String     @map("display_name")
   createdAt      DateTime   @default(now()) @map("created_at")
@@ -373,6 +378,23 @@ model RestaurantStaff {
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@map("restaurant_staff")
+}
+
+// Single-use password reset tokens. Polymorphic across user types so the
+// same table serves restaurant staff (Tier D commit 1), diner mobile
+// (Tier D commit 2), and any future admin reset flow. SPEC §3.3 / §6.8:
+// reset link is valid for 1 hour, single-use.
+model PasswordResetToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  userType    String    @map("user_type") // 'user' | 'restaurant' | 'admin'
+  token       String    @unique
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, userType])
+  @@map("password_reset_tokens")
 }
 
 model AdminUser {
