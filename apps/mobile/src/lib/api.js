@@ -6,6 +6,17 @@ const API_BASE = __DEV__
   ? 'http://155.48.155.143:4000/api'
   : 'https://api.aprez.ro/api';
 
+// Tier F commit 1 — for /uploads/* paths (photos + menus). The DB
+// stores relative paths like `/uploads/{rid}/photos/{file}.jpg`; the
+// helper prepends the API host without the `/api` suffix so the Express
+// static mount serves the file.
+const MEDIA_ROOT = API_BASE.replace(/\/api\/?$/, '');
+export function mediaUrl(relPath) {
+  if (!relPath) return null;
+  if (/^https?:\/\//.test(relPath)) return relPath;
+  return `${MEDIA_ROOT}${relPath}`;
+}
+
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 15000,

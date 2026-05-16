@@ -103,6 +103,12 @@ model RestaurantPhoto {
   restaurantId   String     @map("restaurant_id")
   photoUrl       String     @map("photo_url")
   displayOrder   Int        @default(0) @map("display_order")
+  // Per-row "is this restaurant's cover" flag (Tier F commit 1). Added
+  // because the user-facing contract treats cover as a property of the
+  // photo, while the existing `Restaurant.coverPhotoUrl` is a denormalized
+  // mirror used by the diner-side read path. Both columns are kept in
+  // sync by the cover-toggle endpoint inside a transaction.
+  isCover        Boolean    @default(false) @map("is_cover")
   createdAt      DateTime   @default(now()) @map("created_at")
 
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)

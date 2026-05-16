@@ -9,9 +9,12 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
+import { Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../lib/colors';
-import api from '../lib/api';
+import api, { mediaUrl } from '../lib/api';
+
+const SCREEN_W = Dimensions.get('window').width;
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -87,10 +90,11 @@ export default function RestaurantDetailScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Cover Image */}
+        {/* Cover Image — Tier F: mediaUrl() resolves the relative
+            /uploads/... path stored in the DB to a full URL. */}
         <View style={styles.coverContainer}>
           {r.coverPhotoUrl ? (
-            <Image source={{ uri: r.coverPhotoUrl }} style={styles.coverImage} />
+            <Image source={{ uri: mediaUrl(r.coverPhotoUrl) }} style={styles.coverImage} />
           ) : (
             <View style={styles.coverPlaceholder}>
               <Ionicons name="restaurant" size={60} color={Colors.primaryLight} />
@@ -156,6 +160,42 @@ export default function RestaurantDetailScreen({ route, navigation }) {
             )}
           </View>
         </View>
+
+        {/* Photo Gallery — Tier F. Renders a swipeable carousel of the
+            non-cover photos so the cover stays in its hero slot above. */}
+        {Array.isArray(r.photos) && r.photos.length > 0 && (
+          <View style={styles.gallerySection}>
+            <Text style={styles.sectionTitle}>Photos</Text>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              style={styles.galleryScroll}
+            >
+              {r.photos.map((p) => (
+                <Image
+                  key={p.id}
+                  source={{ uri: mediaUrl(p.photoUrl) }}
+                  style={[styles.galleryImage, { width: SCREEN_W - 40 }]}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Menu PDF — Tier F. System PDF viewer via Linking. */}
+        {r.menuPdfUrl && (
+          <View style={styles.menuSection}>
+            <TouchableOpacity
+              style={styles.menuBtn}
+              onPress={() => Linking.openURL(mediaUrl(r.menuPdfUrl))}
+            >
+              <Ionicons name="document-text-outline" size={20} color={Colors.primary} />
+              <Text style={styles.menuBtnText}>View Menu</Text>
+              <Ionicons name="open-outline" size={18} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Opening Hours */}
         {openingHours.length > 0 && (
@@ -332,4 +372,27 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   bookButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  // Tier F — gallery + menu
+  gallerySection: { marginHorizontal: 20, marginBottom: 20 },
+  galleryScroll: { marginTop: 8 },
+  galleryImage: {
+    height: 200,
+    borderRadius: 12,
+    marginRight: 8,
+    resizeMode: 'cover',
+    backgroundColor: Colors.borderLight,
+  },
+  menuSection: { marginHorizontal: 20, marginBottom: 20 },
+  menuBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  menuBtnText: { color: Colors.primary, fontSize: 15, fontWeight: '700' },
 });

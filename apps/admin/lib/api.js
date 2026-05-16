@@ -80,3 +80,29 @@ export async function apiDelete(path) {
   })
   return handleResponse(response)
 }
+
+// Tier F commit 1 — multipart upload. Tier F endpoints accept a single
+// File under the field name passed in (e.g. 'photo', 'menu'). The
+// browser sets Content-Type with the boundary automatically — passing
+// it manually breaks the boundary parser server-side.
+export async function apiUpload(path, fieldName, file) {
+  const token = getToken()
+  const form = new FormData()
+  form.append(fieldName, file, file.name)
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: form,
+  })
+  return handleResponse(response)
+}
+
+// Build a full URL for a relative /uploads path so admin UI <img src> +
+// menu <a href> work without thinking about the API host.
+export function uploadUrl(relPath) {
+  if (!relPath) return null
+  if (/^https?:\/\//.test(relPath)) return relPath
+  return `${API_BASE_URL}${relPath}`
+}

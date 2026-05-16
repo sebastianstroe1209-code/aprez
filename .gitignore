@@ -36,3 +36,6 @@ server/prisma/migrations/
 # Mobile
 apps/mobile/ios/
 apps/mobile/android/
+
+# Tier F uploads (Railway volume in prod; local dev dir under server/)
+server/uploads/

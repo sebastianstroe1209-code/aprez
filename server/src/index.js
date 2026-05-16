@@ -51,6 +51,8 @@ const reservationRoutes = require('./routes/reservation.routes');
 const favoriteRoutes = require('./routes/favorite.routes');
 const restaurantPlatformRoutes = require('./routes/restaurantPlatform.routes');
 const adminRoutes = require('./routes/admin.routes');
+const uploadsRoutes = require('./routes/uploads.routes');
+const { UPLOADS_DIR } = require('./lib/uploads');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -59,6 +61,16 @@ app.use('/api/reservations', reservationRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/restaurant', restaurantPlatformRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin', uploadsRoutes); // Tier F: photo + menu uploads (admin-only)
+
+// Tier F: static-serve uploaded photos + menus. Reads are public — the
+// diner mobile app needs to fetch cover photos on the public restaurant
+// list. The DB stores paths like `/uploads/{rid}/photos/{filename}` so
+// this mount aligns with the value sent back from the upload endpoints.
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  fallthrough: true,
+  maxAge: '7d',  // cache photos at the CDN/browser layer for a week
+}));
 
 // Socket.io connection handling
 require('./socket/handlers')(io, prisma);

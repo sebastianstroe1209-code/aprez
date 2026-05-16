@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { apiGet, apiPut, apiPost } from '../../../../lib/api'
+import PhotosSection from '../../../../components/PhotosSection'
+import MenuSection from '../../../../components/MenuSection'
 
 const CUISINE_TYPES = [
   'Romanian',
@@ -556,6 +558,31 @@ export default function EditRestaurantPage() {
             + Add Service Period
           </button>
         </div>
+
+        {/* Photos (Tier F commit 1) — full restaurant.photos[] payload
+            includes isCover so the section can render cover state without
+            another round-trip. */}
+        <PhotosSection
+          restaurantId={id}
+          initialPhotos={restaurant?.photos || []}
+          onChange={(nextPhotos) => {
+            const cover = nextPhotos.find((p) => p.isCover)
+            setRestaurant((prev) => prev && ({
+              ...prev,
+              photos: nextPhotos,
+              coverPhotoUrl: cover ? cover.photoUrl : null,
+            }))
+          }}
+        />
+
+        {/* Menu PDF */}
+        <MenuSection
+          restaurantId={id}
+          initialMenuUrl={restaurant?.menuPdfUrl || null}
+          onChange={(nextUrl) => {
+            setRestaurant((prev) => prev && ({ ...prev, menuPdfUrl: nextUrl }))
+          }}
+        />
 
         {/* Settings */}
         <div>

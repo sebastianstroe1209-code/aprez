@@ -19,5 +19,38 @@
     "livePending": "Rezervări în așteptare (live de la deschiderea sesiunii)",
     "languageSectionTitle": "Limbă",
     "languageSectionHint": "Limba interfeței pentru acest browser."
+  },
+  "photoUpload": {
+    "sectionTitle": "Fotografii",
+    "sectionHint": "O fotografie principală și până la 10 fotografii în galerie. JPG sau PNG, maxim 5 MB fiecare.",
+    "coverLabel": "Fotografie principală",
+    "coverEmpty": "Nicio fotografie principală setată. Apasă „Setează ca principală” pe orice fotografie din galerie.",
+    "galleryLabel": "Galerie ({count} din {max})",
+    "addButton": "Adaugă fotografie",
+    "uploading": "Se încarcă…",
+    "setCover": "Setează ca principală",
+    "isCover": "Principală",
+    "deleteButton": "Șterge",
+    "deleteConfirm": "Ștergi această fotografie?",
+    "errorTooLarge": "Fișier prea mare. Maxim 5 MB.",
+    "errorWrongType": "Sunt permise doar fișiere JPG și PNG.",
+    "errorLimit": "Ai deja numărul maxim de 10 fotografii.",
+    "errorGeneric": "Nu am putut încărca fotografia.",
+    "saving": "Se salvează…"
+  },
+  "menuUpload": {
+    "sectionTitle": "Meniu",
+    "sectionHint": "Încarcă un singur fișier PDF. Maxim 10 MB.",
+    "current": "Meniu actual:",
+    "view": "Vezi PDF",
+    "noMenu": "Niciun meniu încărcat încă.",
+    "replaceButton": "Înlocuiește meniul",
+    "uploadButton": "Încarcă meniu",
+    "removeButton": "Șterge meniul",
+    "removeConfirm": "Ștergi meniul?",
+    "uploading": "Se încarcă…",
+    "errorTooLarge": "Fișier prea mare. Maxim 10 MB.",
+    "errorWrongType": "Sunt permise doar fișiere PDF.",
+    "errorGeneric": "Nu am putut încărca meniul."
   }
 }

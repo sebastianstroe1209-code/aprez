@@ -19,5 +19,38 @@
     "livePending": "Pending reservations (live since this session)",
     "languageSectionTitle": "Language",
     "languageSectionHint": "Interface language for this browser."
+  },
+  "photoUpload": {
+    "sectionTitle": "Photos",
+    "sectionHint": "Cover photo and up to 10 gallery photos. JPG or PNG, max 5 MB each.",
+    "coverLabel": "Cover photo",
+    "coverEmpty": "No cover photo set. Click \"Set as cover\" on any gallery photo.",
+    "galleryLabel": "Gallery ({count} of {max})",
+    "addButton": "Add photo",
+    "uploading": "Uploading…",
+    "setCover": "Set as cover",
+    "isCover": "Cover",
+    "deleteButton": "Delete",
+    "deleteConfirm": "Delete this photo?",
+    "errorTooLarge": "File is too large. Max 5 MB.",
+    "errorWrongType": "Only JPG and PNG photos are allowed.",
+    "errorLimit": "You already have the maximum of 10 photos.",
+    "errorGeneric": "Could not upload photo.",
+    "saving": "Saving…"
+  },
+  "menuUpload": {
+    "sectionTitle": "Menu",
+    "sectionHint": "Upload a single PDF menu. Max 10 MB.",
+    "current": "Current menu:",
+    "view": "View PDF",
+    "noMenu": "No menu uploaded yet.",
+    "replaceButton": "Replace menu",
+    "uploadButton": "Upload menu",
+    "removeButton": "Remove menu",
+    "removeConfirm": "Remove the menu?",
+    "uploading": "Uploading…",
+    "errorTooLarge": "File is too large. Max 10 MB.",
+    "errorWrongType": "Only PDF files are allowed.",
+    "errorGeneric": "Could not upload menu."
   }
 }

@@ -222,6 +222,12 @@ router.get(
             orderBy: { dayOfWeek: 'asc' },
           },
           servicePeriods: true,
+          // Tier F commit 1 — photos are now part of the admin
+          // restaurant payload so the Photos section in the edit page
+          // doesn't have to do a second round-trip.
+          photos: {
+            orderBy: { displayOrder: 'asc' },
+          },
           tableSections: {
             include: {
               tables: {
