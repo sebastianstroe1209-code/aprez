@@ -121,6 +121,10 @@
     "errorWrongType": "Sunt permise doar fișiere PDF.",
     "errorGeneric": "Nu am putut încărca meniul."
   },
+  "servicePeriodFilter": {
+    "label": "Interval de servire",
+    "all": "Toate intervalele"
+  },
   "toast": {
     "undoLabel": "Anulează",
     "dismiss": "Închide"

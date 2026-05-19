@@ -10,6 +10,7 @@ import { useSocketRefetch } from '../../../lib/useSocketRefetch'
 import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
 import WalkInActionSheet from '../../../components/WalkInActionSheet'
 import OverrideModal from '../../../components/OverrideModal'
+import ServicePeriodFilter from '../../../components/ServicePeriodFilter'
 import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
 import MinLateBadge from '../../../components/ui/MinLateBadge'
 import { useToast } from '../../../components/ui/ToastProvider'
@@ -23,6 +24,24 @@ const OVERLAY_STATUSES = new Set(['OCCUPIED', 'ARRIVING_SOON', 'AWAITING_GUEST']
 function truncateGuestName(name) {
   if (!name) return ''
   return name.length > 12 ? name.slice(0, 12) + '…' : name
+}
+
+// Tier G4 (SPEC §6.3) — true iff an "HH:MM" reservation time falls inside
+// a service period's [startTime, endTime). An endTime at or before the
+// start is treated as next-day midnight (24:00) so a cross-midnight
+// window (e.g. 22:00–02:00) still matches.
+function timeInPeriod(timeStr, period) {
+  if (!timeStr || !period) return true
+  const toMin = (s) => {
+    const [h, m] = String(s).slice(0, 5).split(':').map(Number)
+    return h * 60 + m
+  }
+  const start = toMin(period.startTime)
+  let end = toMin(period.endTime)
+  if (end <= start) end += 24 * 60
+  let t = toMin(timeStr)
+  if (t < start) t += 24 * 60
+  return t >= start && t < end
 }
 
 const statusColors = {
@@ -53,6 +72,10 @@ export default function LiveFloorPlanPage() {
   // time so we don't lose the grid coordinates.
   const [liveByTableId, setLiveByTableId] = useState({})
   const [activeSection, setActiveSection] = useState(null)
+  // Tier G4 (§6.3) — service-period time filter. servicePeriods is
+  // fetched once from /profile; selectedPeriodId '' = "All periods".
+  const [servicePeriods, setServicePeriods] = useState([])
+  const [selectedPeriodId, setSelectedPeriodId] = useState('')
   const [selectedTable, setSelectedTable] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -96,6 +119,14 @@ export default function LiveFloorPlanPage() {
     loadLayout()
     const interval = setInterval(loadLayout, 30000) // Auto-refresh every 30 seconds
     return () => clearInterval(interval)
+  }, [])
+
+  // Tier G4 (§6.3) — service periods for the floor-plan time filter.
+  // Fetched once on mount; they change rarely (admin-managed).
+  useEffect(() => {
+    apiGet('/api/restaurant/profile')
+      .then((p) => setServicePeriods(p?.servicePeriods || []))
+      .catch(() => {})
   }, [])
 
   // Tier I commit 2 — refetch the layout on merge/unmerge events so the
@@ -244,6 +275,10 @@ export default function LiveFloorPlanPage() {
   // declaration order moves.
   const currentSection = sections.find(s => s.id === activeSection)
   const tables = currentSection?.tables || []
+
+  // Tier G4 (§6.3) — resolved service-period object for the floor-plan
+  // time filter. null when "All periods" is selected (no filtering).
+  const selectedPeriod = servicePeriods.find((p) => p.id === selectedPeriodId) || null
 
   // Memoized merge-layout helper (extracted to lib/liveGridLayout.js).
   // Inputs: tables + liveByTableId. Transient state changes (drag
@@ -632,6 +667,17 @@ export default function LiveFloorPlanPage() {
         </div>
       </div>
 
+      {/* Service-period filter (Tier G4 — §6.3) */}
+      {servicePeriods.length > 0 && (
+        <div className="mb-6 bg-white rounded-lg shadow p-4">
+          <ServicePeriodFilter
+            periods={servicePeriods}
+            value={selectedPeriodId}
+            onChange={setSelectedPeriodId}
+          />
+        </div>
+      )}
+
       {/* Section Tabs */}
       <div className="mb-6 bg-white rounded-lg shadow">
         <div className="flex border-b">
@@ -808,7 +854,12 @@ export default function LiveFloorPlanPage() {
                         table.status === 'ARRIVING_SOON'
                           ? (overlay?.nextReservation || overlay?.currentReservation)
                           : (overlay?.currentReservation || overlay?.nextReservation)
+                      // Tier G4 (§6.3): with a service period selected,
+                      // suppress the guest overlay on tables whose
+                      // reservation falls outside that window — the card
+                      // still renders, just status-only.
                       const showOverlay = !inConfirmMode && OVERLAY_STATUSES.has(table.status) && overlayRes
+                        && (!selectedPeriod || timeInPeriod(overlayRes.time, selectedPeriod))
                       const isDropTarget = dragHover && dragHover.row === row && dragHover.col === col
                       const isDragSource = dragSourceId === table.id
                       // Drag handle only on non-OCCUPIED, non-OOS tables

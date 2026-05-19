@@ -121,6 +121,10 @@
     "errorWrongType": "Only PDF files are allowed.",
     "errorGeneric": "Could not upload menu."
   },
+  "servicePeriodFilter": {
+    "label": "Service period",
+    "all": "All periods"
+  },
   "toast": {
     "undoLabel": "Undo",
     "dismiss": "Dismiss"

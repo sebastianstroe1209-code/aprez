@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import MapView, { Marker } from 'react-native-maps';
 import { Colors } from '../lib/colors';
 import api, { mediaUrl } from '../lib/api';
 
@@ -86,6 +87,11 @@ export default function RestaurantDetailScreen({ route, navigation }) {
   const r = restaurant;
   const openingHours = r.openingHours || [];
   const servicePeriods = r.servicePeriods || [];
+  // Tier G4 (§5.2): lat/lng arrive as Prisma Decimal → JSON strings.
+  // Coerce + guard so legacy rows with null coordinates skip the map.
+  const lat = parseFloat(r.latitude);
+  const lng = parseFloat(r.longitude);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
 
   return (
     <View style={styles.container}>
@@ -160,6 +166,30 @@ export default function RestaurantDetailScreen({ route, navigation }) {
             )}
           </View>
         </View>
+
+        {/* Location map — Tier G4 (§5.2). Read-only MapView with a single
+            marker at the restaurant's coordinates, placed right below the
+            address. Omitted entirely when lat/lng are missing (legacy
+            rows). Platform-default map provider so it renders in Expo Go
+            on both iOS and Android without an API key. */}
+        {hasCoords && (
+          <View style={styles.mapSection}>
+            <MapView
+              style={styles.map}
+              initialRegion={{
+                latitude: lat,
+                longitude: lng,
+                latitudeDelta: 0.012,
+                longitudeDelta: 0.012,
+              }}
+            >
+              <Marker
+                coordinate={{ latitude: lat, longitude: lng }}
+                title={r.nameEn || r.nameRo}
+              />
+            </MapView>
+          </View>
+        )}
 
         {/* Photo Gallery — Tier F. Renders a swipeable carousel of the
             non-cover photos so the cover stays in its hero slot above. */}
@@ -382,6 +412,16 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
     backgroundColor: Colors.borderLight,
   },
+  // Tier G4 — location map
+  mapSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  map: { width: '100%', height: 200 },
   menuSection: { marginHorizontal: 20, marginBottom: 20 },
   menuBtn: {
     flexDirection: 'row',
