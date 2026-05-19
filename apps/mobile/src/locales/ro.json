@@ -6,6 +6,14 @@
     "save": "Salvează",
     "language": "Limbă"
   },
+  "homeFilters": {
+    "nearby": "În apropiere",
+    "locating": "Se localizează…",
+    "locationDenied": "Activează locația pentru a sorta după distanță.",
+    "locationError": "Nu am putut obține locația. Încearcă din nou.",
+    "distanceMeters": "la {{m}} m",
+    "distanceKm": "la {{km}} km"
+  },
   "tabs": {
     "home": "Acasă",
     "reservations": "Rezervări",

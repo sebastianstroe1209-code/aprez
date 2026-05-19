@@ -12,6 +12,8 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import { useTranslation } from 'react-i18next';
 import { Colors } from '../lib/colors';
 import api from '../lib/api';
 
@@ -42,17 +44,29 @@ const CUISINE_FILTERS = [
 ];
 
 export default function HomeScreen({ navigation }) {
+  const { t } = useTranslation();
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [activeCuisine, setActiveCuisine] = useState('All');
+  // G5a — location filter. coords are sent on the /restaurants query so
+  // the backend sorts by Haversine distance. locating guards the GPS
+  // fetch; locationMsg surfaces a localized fallback when GPS is denied.
+  const [locationActive, setLocationActive] = useState(false);
+  const [coords, setCoords] = useState(null);
+  const [locating, setLocating] = useState(false);
+  const [locationMsg, setLocationMsg] = useState('');
 
   const loadRestaurants = useCallback(async () => {
     try {
       const params = {};
       if (search.trim()) params.search = search.trim();
       if (activeCuisine !== 'All') params.cuisine = activeCuisine;
+      if (locationActive && coords) {
+        params.lat = coords.lat;
+        params.lng = coords.lng;
+      }
       const res = await api.get('/restaurants', { params });
       setRestaurants(res.data.restaurants || res.data || []);
     } catch (e) {
@@ -61,7 +75,36 @@ export default function HomeScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [search, activeCuisine]);
+  }, [search, activeCuisine, locationActive, coords]);
+
+  // G5a — toggle the location filter. Permissions are requested only on
+  // this explicit tap (never on render); Expo caches the grant so an
+  // already-granted user is not re-prompted. On denial/failure the
+  // filter stays off and a localized hint is shown.
+  const handleLocationToggle = useCallback(async () => {
+    if (locationActive) {
+      setLocationActive(false);
+      setCoords(null);
+      setLocationMsg('');
+      return;
+    }
+    setLocationMsg('');
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationMsg(t('homeFilters.locationDenied'));
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      setLocationActive(true);
+    } catch (e) {
+      setLocationMsg(t('homeFilters.locationError'));
+    } finally {
+      setLocating(false);
+    }
+  }, [locationActive, t]);
 
   useEffect(() => {
     loadRestaurants();
@@ -115,8 +158,8 @@ export default function HomeScreen({ navigation }) {
             <Ionicons name="navigate-outline" size={14} color={Colors.primary} />
             <Text style={styles.cardDistance}>
               {item.distance < 1
-                ? `${Math.round(item.distance * 1000)}m away`
-                : `${item.distance.toFixed(1)}km away`}
+                ? t('homeFilters.distanceMeters', { m: Math.round(item.distance * 1000) })
+                : t('homeFilters.distanceKm', { km: item.distance.toFixed(1) })}
             </Text>
           </View>
         )}
@@ -149,6 +192,30 @@ export default function HomeScreen({ navigation }) {
             <Ionicons name="close-circle" size={20} color={Colors.textLight} />
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* Location filter (G5a) */}
+      <View style={styles.locationRow}>
+        <TouchableOpacity
+          style={[styles.filterChip, styles.locationChip, locationActive && styles.filterChipActive]}
+          onPress={handleLocationToggle}
+          disabled={locating}
+          activeOpacity={0.7}
+        >
+          {locating ? (
+            <ActivityIndicator size="small" color={locationActive ? '#fff' : Colors.primary} />
+          ) : (
+            <Ionicons
+              name="navigate"
+              size={14}
+              color={locationActive ? '#fff' : Colors.textSecondary}
+            />
+          )}
+          <Text style={[styles.filterText, locationActive && styles.filterTextActive]}>
+            {locating ? t('homeFilters.locating') : t('homeFilters.nearby')}
+          </Text>
+        </TouchableOpacity>
+        {locationMsg ? <Text style={styles.locationMsg}>{locationMsg}</Text> : null}
       </View>
 
       {/* Cuisine Filters */}
@@ -214,6 +281,16 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   searchInput: { flex: 1, paddingVertical: 12, marginLeft: 8, fontSize: 16, color: Colors.text },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    marginTop: 12,
+    gap: 10,
+  },
+  locationChip: { flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 0 },
+  locationMsg: { fontSize: 12, color: Colors.textSecondary, flex: 1 },
   filterList: { maxHeight: 48, marginTop: 12 },
   filterContent: { paddingHorizontal: 16, gap: 8 },
   filterChip: {

@@ -6,6 +6,14 @@
     "save": "Save",
     "language": "Language"
   },
+  "homeFilters": {
+    "nearby": "Nearby",
+    "locating": "Locating…",
+    "locationDenied": "Enable location to sort by distance.",
+    "locationError": "Couldn't get your location. Try again.",
+    "distanceMeters": "{{m}}m away",
+    "distanceKm": "{{km}}km away"
+  },
   "tabs": {
     "home": "Home",
     "reservations": "Reservations",
