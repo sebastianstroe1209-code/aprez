@@ -50,6 +50,7 @@ const restaurantRoutes = require('./routes/restaurant.routes');
 const reservationRoutes = require('./routes/reservation.routes');
 const favoriteRoutes = require('./routes/favorite.routes');
 const restaurantPlatformRoutes = require('./routes/restaurantPlatform.routes');
+const restaurantUploadsRoutes = require('./routes/restaurantUploads.routes');
 const adminRoutes = require('./routes/admin.routes');
 const uploadsRoutes = require('./routes/uploads.routes');
 const { UPLOADS_DIR } = require('./lib/uploads');
@@ -60,6 +61,7 @@ app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/restaurant', restaurantPlatformRoutes);
+app.use('/api/restaurant', restaurantUploadsRoutes); // Tier G3: staff photo + menu uploads
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin', uploadsRoutes); // Tier F: photo + menu uploads (admin-only)
 

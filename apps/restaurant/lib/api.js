@@ -91,3 +91,28 @@ export async function apiDelete(path) {
   })
   return handleResponse(response)
 }
+
+// Multipart POST for file uploads (Tier G3 — staff photo/menu upload).
+// Mirrors the admin app's apiUpload. No Content-Type header — the browser
+// sets the multipart boundary itself.
+export async function apiUpload(path, fieldName, file) {
+  const token = getToken()
+  const form = new FormData()
+  form.append(fieldName, file, file.name)
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: form,
+  })
+  return handleResponse(response)
+}
+
+// Resolve a stored `/uploads/...` relative path to an absolute URL the
+// browser can load. Absolute URLs pass through unchanged.
+export function uploadUrl(relPath) {
+  if (!relPath) return null
+  if (/^https?:\/\//.test(relPath)) return relPath
+  return `${API_BASE_URL}${relPath}`
+}

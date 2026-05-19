@@ -15,6 +15,7 @@ const {
   deactivateMergesForReservation,
 } = require('../lib/tableMerges');
 const { ROMANIAN_PHONE_RE, PHONE_FORMAT_MSG, phoneFormatErrorBody } = require('../lib/phoneValidation');
+const { applyOpeningHours, applyServicePeriods } = require('../lib/restaurantProfile');
 
 const router = express.Router();
 
@@ -2564,6 +2565,7 @@ router.get('/profile', authenticateRestaurant, async (req, res, next) => {
       include: {
         openingHours: { orderBy: { dayOfWeek: 'asc' } },
         servicePeriods: true,
+        photos: { orderBy: { displayOrder: 'asc' } },
       },
     });
 
@@ -2614,24 +2616,71 @@ router.put(
   }
 );
 
-// PUT /settings - Update settings
+// PUT /settings — comprehensive restaurant self-service profile + settings
+// update (SPEC §6.7). restaurantId is ALWAYS derived from the JWT, never
+// a path/body parameter, so staff can only ever edit their own restaurant.
+// Strict field whitelist: anything outside it (including a forged
+// `restaurantId`) is rejected with 400 unknown-field rather than silently
+// ignored. Returns the GET /profile shape so the client can patch in place.
+const SETTINGS_ALLOWED_FIELDS = new Set([
+  'autoConfirmEnabled', 'descriptionRo', 'descriptionEn',
+  'phone', 'email', 'website', 'openingHours', 'servicePeriods',
+]);
 router.put(
   '/settings',
   authenticateRestaurant,
-  [body('autoConfirmEnabled').isBoolean()],
+  (req, res, next) => {
+    for (const key of Object.keys(req.body || {})) {
+      if (!SETTINGS_ALLOWED_FIELDS.has(key)) {
+        return res.status(400).json({
+          error: { code: 'unknown-field', field: key, message: `Field not allowed: ${key}` },
+        });
+      }
+    }
+    next();
+  },
+  [
+    body('autoConfirmEnabled').optional().isBoolean(),
+    body('descriptionRo').optional().trim(),
+    body('descriptionEn').optional().trim(),
+    // SPEC §3.1 / §6.7: contact phone must be +40 format when provided.
+    body('phone').optional({ checkFalsy: true }).trim().matches(ROMANIAN_PHONE_RE).withMessage(PHONE_FORMAT_MSG),
+    body('email').optional({ checkFalsy: true }).trim().isEmail().withMessage('Invalid email address'),
+    body('website').optional({ checkFalsy: true }).trim()
+      .isURL({ protocols: ['http', 'https'], require_protocol: true }).withMessage('Website must be a valid http(s) URL'),
+    body('openingHours').optional().isArray(),
+    body('servicePeriods').optional().isArray(),
+  ],
   handleValidationErrors,
   async (req, res, next) => {
     try {
       const prisma = req.app.get('prisma');
       const restaurantId = req.user.restaurantId;
-      const { autoConfirmEnabled } = req.body;
+      const { autoConfirmEnabled, descriptionRo, descriptionEn, phone, email, website, openingHours, servicePeriods } = req.body;
 
-      const updated = await prisma.restaurant.update({
+      const updateData = {};
+      if (autoConfirmEnabled !== undefined) updateData.autoConfirmEnabled = autoConfirmEnabled;
+      if (descriptionRo !== undefined) updateData.descriptionRo = descriptionRo;
+      if (descriptionEn !== undefined) updateData.descriptionEn = descriptionEn;
+      if (phone !== undefined) updateData.phone = phone;
+      if (email !== undefined) updateData.email = email;
+      if (website !== undefined) updateData.website = website;
+
+      if (Object.keys(updateData).length > 0) {
+        await prisma.restaurant.update({ where: { id: restaurantId }, data: updateData });
+      }
+      await applyOpeningHours(prisma, restaurantId, openingHours);
+      await applyServicePeriods(prisma, restaurantId, servicePeriods);
+
+      const restaurant = await prisma.restaurant.findUnique({
         where: { id: restaurantId },
-        data: { autoConfirmEnabled },
+        include: {
+          openingHours: { orderBy: { dayOfWeek: 'asc' } },
+          servicePeriods: true,
+          photos: { orderBy: { displayOrder: 'asc' } },
+        },
       });
-
-      res.json(updated);
+      res.json(restaurant);
     } catch (error) {
       next(error);
     }

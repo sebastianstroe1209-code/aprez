@@ -6,6 +6,8 @@ import { apiGet, apiPut, apiPost, apiDelete } from '../../../lib/api'
 import { formatDate } from '../../../lib/format'
 import { useAppLocale } from '../../../lib/i18n/I18nProvider'
 import { isAudioEnabled, setAudioEnabled } from '../../../lib/audio'
+import PhotosSection from '../../../components/PhotosSection'
+import MenuSection from '../../../components/MenuSection'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -75,7 +77,9 @@ export default function SettingsPage() {
     try {
       setError('')
       setSuccess('')
-      await apiPut('/api/restaurant/profile', {
+      // Tier G3: routes through the comprehensive PUT /settings endpoint,
+      // which enforces the +40 phone format and the field whitelist.
+      await apiPut('/api/restaurant/settings', {
         descriptionRo: profile.descriptionRo,
         descriptionEn: profile.descriptionEn,
         phone: profile.phone,
@@ -85,7 +89,9 @@ export default function SettingsPage() {
       setSuccess('Profile updated successfully')
       setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
-      setError(err.message || 'Failed to save profile')
+      const code = err.payload?.error?.code
+      if (code === 'invalid-phone-format') setError(t('settings.errorInvalidPhone'))
+      else setError(err.message || 'Failed to save profile')
     }
   }
 
@@ -279,6 +285,16 @@ export default function SettingsPage() {
             Save Profile
           </button>
         </div>
+      </div>
+
+      {/* Photos (Tier G3 — staff-side upload, SPEC §6.7) */}
+      <div className="mb-8 bg-white rounded-lg shadow p-6">
+        <PhotosSection initialPhotos={profile.photos || []} />
+      </div>
+
+      {/* Menu PDF (Tier G3 — staff-side upload, SPEC §6.7) */}
+      <div className="mb-8 bg-white rounded-lg shadow p-6">
+        <MenuSection initialMenuUrl={profile.menuPdfUrl} />
       </div>
 
       {/* Opening Hours (read-only) */}

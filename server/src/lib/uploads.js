@@ -46,6 +46,14 @@ function publicMenuUrl(restaurantId) {
   return `/uploads/${restaurantId}/menu.pdf`;
 }
 
+// Resolve the restaurant id the upload belongs to. Admin routes carry it
+// as the `:id` path param; staff routes (where it would be a tenancy hole
+// to trust a path/body value) set `req.uploadRestaurantId` from the JWT
+// via a middleware before the multer chain runs.
+function uploadRestaurantId(req) {
+  return req.uploadRestaurantId || req.params.id;
+}
+
 // Multer photo uploader. Generates a UUID-based filename so two
 // concurrently-uploaded photos with the same original name don't collide,
 // and so the public URL is opaque (don't leak the diner's filename).
@@ -53,7 +61,7 @@ const photoUploader = multer({
   storage: multer.diskStorage({
     destination: (req, _file, cb) => {
       try {
-        const dir = photosDir(req.params.id);
+        const dir = photosDir(uploadRestaurantId(req));
         fs.mkdirSync(dir, { recursive: true });
         cb(null, dir);
       } catch (e) { cb(e); }
@@ -83,7 +91,7 @@ const menuUploader = multer({
   storage: multer.diskStorage({
     destination: (req, _file, cb) => {
       try {
-        const dir = restaurantDir(req.params.id);
+        const dir = restaurantDir(uploadRestaurantId(req));
         fs.mkdirSync(dir, { recursive: true });
         cb(null, dir);
       } catch (e) { cb(e); }

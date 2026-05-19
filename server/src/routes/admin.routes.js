@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, param, query, validationResult } = require('express-validator');
 const { authenticateAdmin } = require('../middleware/auth');
+const { applyOpeningHours, applyServicePeriods } = require('../lib/restaurantProfile');
 
 const router = express.Router();
 
@@ -303,43 +304,10 @@ router.put(
         data: updateData,
       });
 
-      // Update opening hours if provided (delete + recreate)
-      const { openingHours, servicePeriods } = req.body;
-      if (openingHours && Array.isArray(openingHours)) {
-        await prisma.openingHours.deleteMany({ where: { restaurantId: id } });
-        const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        for (const oh of openingHours) {
-          const dayIndex = DAYS.indexOf(oh.day);
-          if (dayIndex === -1) continue;
-          await prisma.openingHours.create({
-            data: {
-              restaurantId: id,
-              dayOfWeek: dayIndex,
-              isOpen: oh.isOpen !== false,
-              openTime: oh.openTime || '09:00',
-              closeTime: oh.closeTime || '23:00',
-            },
-          });
-        }
-      }
-
-      // Update service periods if provided (delete + recreate)
-      if (servicePeriods && Array.isArray(servicePeriods)) {
-        await prisma.servicePeriod.deleteMany({ where: { restaurantId: id } });
-        for (const sp of servicePeriods) {
-          if (!sp.nameRo && !sp.nameEn) continue;
-          await prisma.servicePeriod.create({
-            data: {
-              restaurantId: id,
-              nameRo: sp.nameRo || sp.nameEn,
-              nameEn: sp.nameEn || sp.nameRo,
-              startTime: sp.startTime || '12:00',
-              endTime: sp.endTime || '15:00',
-              daysOfWeek: Array.isArray(sp.daysOfWeek) ? sp.daysOfWeek : [0, 1, 2, 3, 4, 5, 6],
-            },
-          });
-        }
-      }
+      // Opening hours + service periods (delete + recreate). Shared with
+      // the staff PUT /api/restaurant/settings endpoint so the two can't drift.
+      await applyOpeningHours(prisma, id, req.body.openingHours);
+      await applyServicePeriods(prisma, id, req.body.servicePeriods);
 
       await logAdminAction(prisma, adminUserId, 'edited_restaurant', 'restaurant', id, updateData);
 
