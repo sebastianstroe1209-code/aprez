@@ -14,6 +14,7 @@ const {
   findActiveMergeForTable,
   deactivateMergesForReservation,
 } = require('../lib/tableMerges');
+const { ROMANIAN_PHONE_RE, PHONE_FORMAT_MSG, phoneFormatErrorBody } = require('../lib/phoneValidation');
 
 const router = express.Router();
 
@@ -50,7 +51,12 @@ function generatePassword(length = 12) {
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    const arr = errors.array();
+    // SPEC §3.1: a guest-phone-format failure gets the structured
+    // error.code contract; other failures keep the legacy shape.
+    const phoneBody = phoneFormatErrorBody(arr);
+    if (phoneBody) return res.status(400).json(phoneBody);
+    return res.status(400).json({ errors: arr });
   }
   next();
 };
@@ -722,7 +728,10 @@ router.post(
   authenticateRestaurant,
   [
     body('guestName').notEmpty().trim(),
-    body('guestPhone').notEmpty().trim(),
+    // SPEC §3.1: guest phone required + must be +40 format. `.bail()` so a
+    // missing phone reports "required", not the format error.
+    body('guestPhone').notEmpty().withMessage('Guest phone is required').bail()
+      .trim().matches(ROMANIAN_PHONE_RE).withMessage(PHONE_FORMAT_MSG),
     body('date').isISO8601(),
     body('time').matches(/^\d{2}:\d{2}$/),
     body('partySize').isInt({ min: 1 }),
@@ -1116,7 +1125,8 @@ router.put(
     body('date').optional().isISO8601(),
     body('time').optional().matches(/^\d{2}:\d{2}$/),
     body('partySize').optional().isInt({ min: 1 }),
-    body('guestPhone').optional().trim(),
+    // SPEC §3.1: when staff edits the guest phone it must be +40 format.
+    body('guestPhone').optional({ checkFalsy: true }).trim().matches(ROMANIAN_PHONE_RE).withMessage(PHONE_FORMAT_MSG),
     body('guestName').optional().trim(),
     body('specialRequests').optional({ nullable: true }).isString(),
   ],

@@ -65,6 +65,35 @@ function isConnectedByAdjacency(tables) {
   return seen.size === tables.length;
 }
 
+// Count the free Manhattan-1, same-section neighbors of `table`. A
+// neighbor counts as free when it is active, not Occupied/OutOfService,
+// and holds no conflicting reservation in the window (its id is absent
+// from `busyTableIds`). Used as the SPEC §9.3 auto-confirm tiebreak:
+// among equal exact-seat tables, prefer the one with the most free
+// neighbors so staff keep the most room to combine later.
+function countFreeAdjacents(table, allTables, busyTableIds) {
+  const isFree = (t) =>
+    t.isActive &&
+    t.status !== 'OCCUPIED' &&
+    t.status !== 'OUT_OF_SERVICE' &&
+    !busyTableIds.has(t.id);
+  const cells = [
+    [table.gridRow - 1, table.gridCol],
+    [table.gridRow + 1, table.gridCol],
+    [table.gridRow, table.gridCol - 1],
+    [table.gridRow, table.gridCol + 1],
+  ];
+  let count = 0;
+  for (const [r, c] of cells) {
+    const neighbor = allTables.find(
+      (t) => t.id !== table.id && t.sectionId === table.sectionId &&
+        t.gridRow === r && t.gridCol === c,
+    );
+    if (neighbor && isFree(neighbor)) count++;
+  }
+  return count;
+}
+
 // HH:mm minute-of-day helper. Returns minutes since 00:00.
 function hhmmToMin(s) {
   const [h, m] = String(s).split(':').map(Number);
@@ -215,6 +244,7 @@ module.exports = {
   MIN_MERGE_MEMBERS,
   combinedLabel,
   isConnectedByAdjacency,
+  countFreeAdjacents,
   timeRangesOverlap,
   hhmmToMin,
   findActiveMergeForTable,

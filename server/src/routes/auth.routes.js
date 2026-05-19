@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { generateToken } = require('../middleware/auth');
 const { sendEmail } = require('../services/notifications/channels/email');
+const { ROMANIAN_PHONE_RE, PHONE_FORMAT_MSG, phoneFormatErrorBody } = require('../lib/phoneValidation');
 
 const router = express.Router();
 
@@ -34,14 +35,19 @@ router.post('/register', [
   body('firstName').trim().notEmpty().withMessage('First name is required'),
   body('lastName').trim().notEmpty().withMessage('Last name is required'),
   // SPEC §3.1: phone is optional but must be +40 format (Romanian) when present.
-  body('phone').optional({ checkFalsy: true }).trim().matches(/^\+40\d{9}$/).withMessage('Phone must be in +40XXXXXXXXX format'),
+  body('phone').optional({ checkFalsy: true }).trim().matches(ROMANIAN_PHONE_RE).withMessage(PHONE_FORMAT_MSG),
   body('email').optional().isEmail().withMessage('Invalid email'),
   body('password').optional().isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ error: { message: errors.array()[0].msg } });
+      const arr = errors.array();
+      // SPEC §3.1: surface a structured error.code for the phone-format
+      // failure so the mobile UI can localize it (Tier E/F contract).
+      const phoneBody = phoneFormatErrorBody(arr);
+      if (phoneBody) return res.status(400).json(phoneBody);
+      return res.status(400).json({ error: { message: arr[0].msg } });
     }
 
     const prisma = req.app.get('prisma');

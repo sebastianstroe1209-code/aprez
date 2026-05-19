@@ -2,7 +2,7 @@ const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { authenticateUser } = require('../middleware/auth');
 const { EVENTS, dispatchAsync } = require('../services/notifications');
-const { deactivateMergesForReservation } = require('../lib/tableMerges');
+const { deactivateMergesForReservation, countFreeAdjacents } = require('../lib/tableMerges');
 
 const router = express.Router();
 
@@ -150,8 +150,7 @@ router.post(
           seatCount: pSize,
           status: { notIn: ['OCCUPIED', 'OUT_OF_SERVICE'] },
         },
-        orderBy: { seatCount: 'asc' },
-        select: { id: true, seatCount: true, sectionId: true },
+        select: { id: true, seatCount: true, sectionId: true, gridRow: true, gridCol: true },
       });
 
       // Also check if sections have enough combined capacity for manual confirmation
@@ -175,24 +174,44 @@ router.post(
         return res.status(400).json({ error: 'No tables available for this party size' });
       }
 
-      // Check for conflicting reservations on single-fit tables
+      // Pick the table to (potentially) auto-confirm onto. SPEC §9.3:
+      // among the exact-seat-match free tables, prefer the one with the
+      // most free Manhattan-1 same-section neighbors (combining
+      // flexibility). The tiebreak only matters when >1 exact match is
+      // free; a single free candidate is picked unchanged.
       let freeTable = null;
       if (tables.length > 0) {
+        // Conflicts across ALL tables in the window — needed both to
+        // exclude busy candidates and to score the free-neighbor tiebreak.
         const conflicting = await prisma.reservation.findMany({
           where: {
             restaurantId,
             date: dateObj,
             status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
-            tableId: { in: tables.map((t) => t.id) },
+            tableId: { not: null },
             AND: [
               { time: { lt: endTime } },
               { endTime: { gt: time } },
             ],
           },
+          select: { tableId: true },
         });
 
-        const occupiedTableIds = new Set(conflicting.map((r) => r.tableId));
-        freeTable = tables.find((t) => !occupiedTableIds.has(t.id));
+        const busyTableIds = new Set(conflicting.map((r) => r.tableId));
+        const freeCandidates = tables.filter((t) => !busyTableIds.has(t.id));
+
+        if (freeCandidates.length === 1) {
+          freeTable = freeCandidates[0];
+        } else if (freeCandidates.length > 1) {
+          // Tiebreak: load the full grid once and rank by free-neighbor count.
+          const gridTables = await prisma.restaurantTable.findMany({
+            where: { restaurantId },
+            select: { id: true, sectionId: true, gridRow: true, gridCol: true, status: true, isActive: true },
+          });
+          freeTable = freeCandidates
+            .map((t) => ({ t, score: countFreeAdjacents(t, gridTables, busyTableIds) }))
+            .sort((a, b) => b.score - a.score)[0].t;
+        }
       }
 
       // Determine status

@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { authenticateUser } = require('../middleware/auth');
+const { ROMANIAN_PHONE_RE, PHONE_FORMAT_MSG, phoneFormatErrorBody } = require('../lib/phoneValidation');
 
 const router = express.Router();
 
@@ -8,7 +9,12 @@ const router = express.Router();
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    const arr = errors.array();
+    // SPEC §3.1: a phone-format failure gets the structured error.code
+    // contract; other failures keep the legacy { errors: [...] } shape.
+    const phoneBody = phoneFormatErrorBody(arr);
+    if (phoneBody) return res.status(400).json(phoneBody);
+    return res.status(400).json({ errors: arr });
   }
   next();
 };
@@ -56,7 +62,7 @@ router.put(
     body('lastName').optional().trim().isLength({ min: 1 }),
     body('email').optional().isEmail().normalizeEmail(),
     // SPEC §3.1: phone optional but must be +40 format (Romanian) when present.
-    body('phone').optional({ checkFalsy: true }).trim().matches(/^\+40\d{9}$/).withMessage('Phone must be in +40XXXXXXXXX format'),
+    body('phone').optional({ checkFalsy: true }).trim().matches(ROMANIAN_PHONE_RE).withMessage(PHONE_FORMAT_MSG),
   ],
   handleValidationErrors,
   async (req, res, next) => {

@@ -75,6 +75,22 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 // Socket.io connection handling
 require('./socket/handlers')(io, prisma);
 
+// SPEC §3.2 — 30-day reservation pruning. Day-granular, so it runs on
+// its own interval rather than the minute-tick table-status loop in
+// socket/handlers.js — a failure here must not stall those jobs. Runs
+// once at boot, then every 24h. The job is idempotent.
+const { pruneOldReservations } = require('./jobs/pruneOldReservations');
+const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+async function runReservationPrune() {
+  try {
+    await pruneOldReservations(prisma, new Date());
+  } catch (err) {
+    console.error('[prune:reservations] failed:', err.message);
+  }
+}
+runReservationPrune();
+setInterval(runReservationPrune, PRUNE_INTERVAL_MS);
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
