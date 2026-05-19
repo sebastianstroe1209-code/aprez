@@ -482,7 +482,7 @@ model Notification {
   recipientType  String     @map("recipient_type") // 'user' or 'restaurant'
   userId         String?    @map("user_id")
   restaurantId   String?    @map("restaurant_id")
-  type           String     // 'reservation_confirmed', 'waitlist_available', etc.
+  type           String     // 'reservation_confirmed', 'modification_requested', etc.
   titleRo        String     @map("title_ro")
   titleEn        String     @map("title_en")
   bodyRo         String     @map("body_ro") @db.Text

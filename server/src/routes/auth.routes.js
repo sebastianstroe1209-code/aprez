@@ -116,45 +116,21 @@ router.post('/register', [
 // USER LOGIN (Email + Password)
 // ============================================
 router.post('/login', [
-  body('email').optional().isEmail(),
-  body('phone').optional().trim(),
-  body('password').optional(),
+  body('email').isEmail(),
+  body('password').notEmpty(),
 ], async (req, res, next) => {
   try {
     const prisma = req.app.get('prisma');
-    const { email, phone, password } = req.body;
+    const { email, password } = req.body;
 
-    let user;
-    if (email) {
-      user = await prisma.user.findUnique({ where: { email } });
-    } else if (phone) {
-      user = await prisma.user.findUnique({ where: { phone } });
-      if (user) {
-        // Phone login — send OTP instead of password
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        if (!global.otpStore) global.otpStore = {};
-        global.otpStore[phone] = {
-          code: otp,
-          expiresAt: Date.now() + 5 * 60 * 1000,
-        };
-        console.log(`[DEV] Login OTP for ${phone}: ${otp}`);
-        return res.json({ message: 'OTP sent to your phone. Use /verify-otp to complete login.' });
-      }
-    }
-
-    if (!user) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash) {
       return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
 
-    // Email login requires password
-    if (email && password) {
-      if (!user.passwordHash) {
-        return res.status(401).json({ error: { message: 'This account uses phone login. Please use OTP.' } });
-      }
-      const valid = await bcrypt.compare(password, user.passwordHash);
-      if (!valid) {
-        return res.status(401).json({ error: { message: 'Invalid credentials' } });
-      }
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
 
     const token = generateToken({ id: user.id, role: 'user' });

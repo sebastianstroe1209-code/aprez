@@ -4,7 +4,20 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-17. Tier I COMPLETE end-to-end — commit 3 (calendar propagation + edge polish) SHIPPED. SPEC §8.2 fully resolved. Override flow + drag UX + calendar wiring + auto-deactivate lifecycle hooks all green across the full regression battery.**
+**Last session: 2026-05-20. Tier G commit 1 SHIPPED — orphan dead-code remnants stripped + SPEC §15 stale entries closed out.** Audit found §15 had drifted significantly out of sync with the code: §9.3 exact-match, §3.4 OTP, §7.4 analytics, §7.5 billing, waitlist routes, all three §8.1 crons, and §9.1 specialRequests were all flagged as open but already shipped by prior tiers. G1 closes the documentation debt + removes three small code remnants:
+
+- Deleted the orphan OTP-send stub in `auth.routes.js` `/login` phone-branch (lines 133-142 pre-G1) that generated an OTP and pointed clients at `/verify-otp` which no longer exists. Phone login is no longer a path; `/login` is email + password only per §3.4. Tightened the validator (`email().isEmail()` + `password().notEmpty()` — no more `.optional()` on both).
+- Deleted `WAITLIST_STATUS`, `WAITLIST_CONFIRM_WINDOW_MIN`, `WAITLIST_SECOND_REMINDER_MIN` orphan exports from `packages/shared/src/constants/index.js`.
+- Stripped the stale `'waitlist_available'` example from the `Notification.type` doc comment in `server/prisma/schema.prisma:485` (now reads `'modification_requested'`).
+- Rewrote `SPEC.md` §15 to move 7 already-shipped items into a new "Resolved before Tier G (housekeeping)" section with code-location citations, and added a new entry capturing the silent-bug found in audit: `apps/restaurant/app/dashboard/settings/page.js:96` calls `PUT /api/restaurant/settings` which doesn't exist — auto-confirm toggle fails silently today. Slated for G3.
+
+**No schema migrations, no behavioral changes, no new routes.** The `/login` phone-branch deletion is dead-code removal (with the OTP-send endpoint gone, any phone-only POST returns 401 anyway).
+
+**Regression battery: all green** — C1 dispatcher 12/12, C6 popup-actions 19/19, C6 live-grid-layout 18/18, C6 assign-table-override-wiring 14/14, Tier D2 SMOKE OK, E1 SMOKE OK, E2 SMOKE OK, F2 SMOKE OK, I1 SMOKE OK, I3 SMOKE OK.
+
+**Tier G commit 2 (next, waits for Sebastian's approval):** §3.1 `+40` phone regex on `/auth/register` + §9.3 "most free neighbors" auto-confirm tiebreak (extract `countFreeAdjacents()` to `tableMerges.js`) + §3.2 30-day reservation pruning cron (separate day-granular `setInterval`, NOT folded into `socket/handlers.js` minute-loop) + new picker smoke at `server/.smoke/g-auto-confirm-picker-test.js`. The audit's full 5-commit Tier G split is preserved in the audit reply (G3 = staff Settings PUT + photos/menu, G4 = service-period filter on Live + mobile Maps embed, G5 = mobile home multi-filter, G6 + G7 = schema migrations gated on `--accept-data-loss`).
+
+**Earlier last session (2026-05-17): Tier I COMPLETE end-to-end — commit 3 (calendar propagation + edge polish) SHIPPED. SPEC §8.2 fully resolved. Override flow + drag UX + calendar wiring + auto-deactivate lifecycle hooks all green across the full regression battery.**
 
 Tier I commit 3 details:
 - **Calendar** (`apps/restaurant/app/dashboard/calendar/page.js`): merged-reservation blocks render an amber `+T3` badge inside the existing single-column block (decision 4 — no grid math change). Tooltip on the badge shows the full combined label ("T1+T3").

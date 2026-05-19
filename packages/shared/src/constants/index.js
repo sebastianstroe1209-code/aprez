@@ -20,15 +20,6 @@ const RESERVATION_STATUS = {
   NO_SHOW: { key: 'NO_SHOW', labelRo: 'Nu s-a prezentat', labelEn: 'No Show' },
 };
 
-// Waitlist statuses
-const WAITLIST_STATUS = {
-  WAITING: { key: 'WAITING', labelRo: 'În așteptare', labelEn: 'Waiting' },
-  NOTIFIED: { key: 'NOTIFIED', labelRo: 'Notificat', labelEn: 'Notified' },
-  CONFIRMED: { key: 'CONFIRMED', labelRo: 'Confirmat', labelEn: 'Confirmed' },
-  EXPIRED: { key: 'EXPIRED', labelRo: 'Expirat', labelEn: 'Expired' },
-  CANCELLED: { key: 'CANCELLED', labelRo: 'Anulat', labelEn: 'Cancelled' },
-};
-
 // Cuisine types available for restaurants
 const CUISINE_TYPES = [
   { value: 'Romanian', labelRo: 'Românească', labelEn: 'Romanian' },
@@ -63,8 +54,6 @@ const AUTO_CONFIRM_MAX_PARTY = 4;
 const AUTO_CONFIRM_LEAD_HOURS = 24;
 const OCCUPIED_TIMER_MIN = 120; // Table timer duration
 const AWAITING_GUEST_REMINDER_MIN = 15; // Light Red reminder interval
-const WAITLIST_CONFIRM_WINDOW_MIN = 10; // 10 minutes to confirm
-const WAITLIST_SECOND_REMINDER_MIN = 5; // 5-minute reminder
 const PRE_RESERVATION_REMINDER_MIN = 45; // 45-minute reminder
 const WALK_IN_DEFAULT_GUEST_COUNT = 2;
 const MAX_PARTY_SIZE = 30;
@@ -77,7 +66,6 @@ const FEE_PER_PERSON_RON = 1;
 module.exports = {
   TABLE_STATUS,
   RESERVATION_STATUS,
-  WAITLIST_STATUS,
   CUISINE_TYPES,
   RESERVATION_DURATION_MIN,
   TIME_SLOT_INTERVAL_MIN,
@@ -86,8 +74,6 @@ module.exports = {
   AUTO_CONFIRM_LEAD_HOURS,
   OCCUPIED_TIMER_MIN,
   AWAITING_GUEST_REMINDER_MIN,
-  WAITLIST_CONFIRM_WINDOW_MIN,
-  WAITLIST_SECOND_REMINDER_MIN,
   PRE_RESERVATION_REMINDER_MIN,
   WALK_IN_DEFAULT_GUEST_COUNT,
   MAX_PARTY_SIZE,
