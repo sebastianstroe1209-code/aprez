@@ -67,7 +67,7 @@ async function main() {
       status: { in: ['CONFIRMED', 'AUTO_CONFIRMED'] },
     },
     orderBy: { createdAt: 'desc' },
-    include: { restaurant: { select: { name: true } } },
+    include: { restaurant: { select: { nameRo: true, nameEn: true } } },
   });
   if (!reservation) {
     throw new Error(
@@ -77,7 +77,7 @@ async function main() {
   }
 
   console.log(`[res]    id=${reservation.id}`);
-  console.log(`[res]    restaurant=${reservation.restaurant?.name}`);
+  console.log(`[res]    restaurant=${reservation.restaurant?.nameRo || reservation.restaurant?.nameEn}`);
   console.log(`[res]    status=${reservation.status}`);
   console.log(`[res]    original date=${reservation.date.toISOString().slice(0, 10)} time=${reservation.time}`);
   console.log(`[res]    party=${reservation.partySize}`);
