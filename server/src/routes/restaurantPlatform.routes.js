@@ -2322,9 +2322,6 @@ router.get(
 // this file. It is shared with the diner-facing GET /restaurants
 // availability join so the merge-feasibility BFS lives in one place.
 
-// Waitlist routes (GET /waitlist, /waitlist/suggestions, POST /waitlist/:id/notify,
-// DELETE /waitlist/:id) removed — SPEC §6.6 cuts the waitlist system entirely.
-
 // ============================================
 // BAN MANAGEMENT
 // ============================================

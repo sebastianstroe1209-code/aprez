@@ -88,8 +88,10 @@ const tailwindColors = {
   'res-completed': Colors.completed,
   'res-noshow': Colors.noShow,
 
-  // Sidebar — dark navy nav bar background. No semantic equivalent in the
-  // brand palette; both Next apps still use `bg-sidebar`.
+  // Sidebar — dark navy nav-bar background, consumed by both Next apps
+  // via the `bg-sidebar` class. Deliberately outside the brand/status
+  // palette (it is app chrome, not a brand or feedback color); `sidebar`
+  // is its canonical token.
   sidebar: '#1a1a2e',
 };
 

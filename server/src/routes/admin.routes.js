@@ -1049,16 +1049,6 @@ router.delete(
   }
 );
 
-// Analytics routes (/analytics/overview, /analytics/restaurants/:id) removed
-// — SPEC §7.4 cuts admin Analytics & Insights from MVP. Operational
-// nice-to-have; manual reporting is fine for MVP scale.
-
-// Billing routes (/billing, /billing/:id/mark-paid, /billing/:id/export,
-// /billing/generate) removed — SPEC §7.5 cuts admin Billing Support from
-// MVP. Sebastian invoices manually outside the platform. The BillingReport
-// Prisma model is retained on the schema (no destructive change here);
-// dropping it can be a separate decision.
-
 // ============================================
 // AUDIT LOG
 // ============================================

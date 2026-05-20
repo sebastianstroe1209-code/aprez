@@ -114,10 +114,6 @@ router.post('/register', [
   }
 });
 
-// Phone OTP (/send-otp, /verify-otp) removed — SPEC §3.4 cuts phone OTP from
-// MVP. Diner auth is email + password only; phone is optional/unverified.
-// SMS/WhatsApp OTP is deferred to MVP+1.
-
 // ============================================
 // USER LOGIN (Email + Password)
 // ============================================

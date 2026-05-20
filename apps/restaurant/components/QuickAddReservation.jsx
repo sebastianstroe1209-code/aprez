@@ -12,8 +12,8 @@
 //   onSaveSuccess?: (savedReservation) => void — optional. When provided
 //     the parent owns the post-save feedback (toast copy, follow-up nav,
 //     etc.) and this component skips its built-in default toast. The
-//     callback receives the POST response body. Standalone callers (e.g.
-//     the Phase 2 demo route) omit it and get the default `savedToast`.
+//     callback receives the POST response body. Callers that omit it
+//     fall back to the component's built-in default `savedToast`.
 //
 // Smart defaults per §3.3 EDGE CASES:
 //   - Date: today if open + time still in service window, else next open day
