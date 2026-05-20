@@ -233,16 +233,22 @@ model TableMove {
   isActive          Boolean   @default(true) @map("is_active")
   createdAt         DateTime  @default(now()) @map("created_at")
 
-  // KNOWN ISSUE flagged 2026-05-16 during Tier I commit 2 fix-the-fix:
-  // these FKs default to RESTRICT. Pre-Tier-I, TableMove rows were never
-  // written so it didn't bite. With Tier I writing real rows, the Tier F2
-  // section-delete endpoint now FK-fails (23001) when cascading to tables
-  // that have TableMove history. Fix is additive (set onDelete: Cascade
-  // on `table`, SetNull on the other two) but a schema migration wasn't
-  // authorized in the fix-the-fix turn — pick up in Tier J.
-  table             RestaurantTable @relation("MovedTable", fields: [tableId], references: [id])
-  mergedWithTable   RestaurantTable? @relation("MergedWithTable", fields: [mergedWithTableId], references: [id])
-  reservation       Reservation?    @relation(fields: [reservationId], references: [id])
+  // FK delete behavior — fixed in Tier G commit 6 (2026-05-20). Before
+  // this, all three FKs defaulted to RESTRICT; pre-Tier-I no TableMove
+  // rows were written so it didn't bite, but once Tier I wrote real
+  // rows the Tier F2 section-delete endpoint FK-failed (23001) when it
+  // cascaded into tables that had move history. Applied via
+  // `prisma db push --accept-data-loss` — Prisma classifies any FK
+  // redefinition as destructive, but this touches no columns and no
+  // rows; it only corrects cascade semantics. `table` now CASCADEs (a
+  // deleted table drops its move rows); `mergedWithTable` and
+  // `reservation` SET NULL so a deleted merge-partner / reservation
+  // leaves the historical move row intact rather than blocking the
+  // delete. Obsoletes the scripts/cleanup-tieri-qa.js pre-purge
+  // workaround (removed in the same commit).
+  table             RestaurantTable @relation("MovedTable", fields: [tableId], references: [id], onDelete: Cascade)
+  mergedWithTable   RestaurantTable? @relation("MergedWithTable", fields: [mergedWithTableId], references: [id], onDelete: SetNull)
+  reservation       Reservation?    @relation(fields: [reservationId], references: [id], onDelete: SetNull)
 
   @@index([mergeGroupId])
   @@index([isActive, date])

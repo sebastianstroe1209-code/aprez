@@ -1,4 +1,4 @@
-// Tier F commit 2 smoke — covers all 9 paths the user asked for:
+// Tier F commit 2 smoke — covers 10 paths:
 //   a. POST disabled-date for tomorrow → 201, row inserted
 //   b. POST same date again → 400 already-exists
 //   c. POST past date → 400 date-in-past
@@ -8,6 +8,11 @@
 //   g. PUT section gridRows expand → 200
 //   h. DELETE section with future reservation → 409 section-has-reservations
 //   i. DELETE empty section → 200
+//   j. DELETE section whose table has TableMove (merge) history → 200,
+//      full cascade — added Tier G commit 6. Before G6 the
+//      TableMove.tableId FK defaulted to RESTRICT, so this path
+//      FK-failed (23001) and needed the cleanup-tieri-qa.js pre-purge
+//      workaround (removed in G6).
 //
 // Plus regressions: Tier F1 photo upload + Tier D2 diner login both
 // still 200.
@@ -247,6 +252,43 @@ async function main() {
   expect(rDelOk.status === 200, `status=${rDelOk.status}`);
   const sectionGone = await prisma.tableSection.findUnique({ where: { id: sid } });
   expect(!sectionGone, `section gone from DB`);
+
+  // ============================================================
+  // j. DELETE section whose table carries TableMove history → 200
+  //    Tier G commit 6: TableMove.tableId is now ON DELETE CASCADE.
+  //    Before G6 this exact shape FK-failed (23001) and needed the
+  //    cleanup-tieri-qa.js pre-purge workaround (removed in G6). This
+  //    case proves the cascade now resolves section → tables →
+  //    table_moves with no manual pre-delete.
+  // ============================================================
+  console.log('\n[j] DELETE section whose table has merge history → cascade clean (G6)');
+  const secJ = await http('POST', `/admin/restaurants/${rid}/sections`, tAdmin, {
+    nameRo: SMOKE_SECTION_NAME, nameEn: SMOKE_SECTION_NAME, gridRows: 4, gridColumns: 4,
+  });
+  expect(secJ.status === 201 || secJ.status === 200, `section create status=${secJ.status}`);
+  const sidJ = secJ.body?.id;
+  const tblJ = await http('POST', `/admin/sections/${sidJ}/tables`, tAdmin, {
+    tableNumber: 'TSMOKE-J', seatCount: 2, gridRow: 0, gridCol: 0,
+  });
+  expect(tblJ.status === 201 || tblJ.status === 200, `table create status=${tblJ.status}`);
+  const tidJ = tblJ.body?.id;
+  // A TableMove row tied to that table — the exact merge-history shape
+  // that used to block the section-delete cascade.
+  const moveJ = await prisma.tableMove.create({
+    data: {
+      tableId: tidJ,
+      mergeGroupId: 'smoke-f2-j-group',
+      originalGridRow: 0, originalGridCol: 0,
+      movedGridRow: 0, movedGridCol: 0,
+      date: futureDateOnly,
+      timeStart: '19:00', timeEnd: '21:00',
+    },
+  });
+  const rDelJ = await http('DELETE', `/admin/sections/${sidJ}`, tAdmin);
+  expect(rDelJ.status === 200, `section delete with merge history status=${rDelJ.status} (pre-G6: FK-fail 23001)`);
+  expect(!(await prisma.tableSection.findUnique({ where: { id: sidJ } })), `section row gone`);
+  expect(!(await prisma.restaurantTable.findUnique({ where: { id: tidJ } })), `table row cascade-deleted`);
+  expect(!(await prisma.tableMove.findUnique({ where: { id: moveJ.id } })), `TableMove row cascade-deleted`);
 
   // ============================================================
   // [REG] Tier D2 diner login + Tier F1 admin photo list still work
