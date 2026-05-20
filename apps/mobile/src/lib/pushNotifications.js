@@ -88,12 +88,12 @@ export async function registerPushToken() {
       return;
     }
 
+    // CACHE CHECK DISABLED for J launch QA — diagnostic rounds polluted
+    // the DB while SecureStore retained a valid token, leaving the two
+    // out of sync. Forcing every login to POST until we can re-verify
+    // the cache invariant holds (then restore the early-return).
     const cached = await SecureStore.getItemAsync(TOKEN_CACHE_KEY).catch(() => null);
-    debug.push(`cached-match=${cached === token}`);
-    if (cached === token) {
-      Alert.alert('Push DEBUG', debug.join('\n') + '\nSTOP: cache match');
-      return;
-    }
+    debug.push(`cached-match=${cached === token} (bypassed)`);
 
     try {
       await api.put('/users/me/push-token', { expoPushToken: token });
