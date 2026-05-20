@@ -242,6 +242,17 @@ export default function ReservationsScreen({ navigation }) {
           </View>
         )}
 
+        {/* J1d — informational pending-modification indicator. No
+            actions; clears automatically when modificationPending → null
+            (staff approve/reject fires reservation:updated). Rejected
+            (actionable) takes precedence when somehow both are present. */}
+        {item.modificationPending && !hasUnackRejected && (
+          <View style={styles.pendingBanner}>
+            <Ionicons name="hourglass-outline" size={16} color={Colors.warnTintText} />
+            <Text style={styles.pendingBannerText}>{t('reservationDetail.pendingModNote')}</Text>
+          </View>
+        )}
+
         {canCancel && tab === 'upcoming' && !hasUnackRejected && (
           <TouchableOpacity
             style={styles.cancelBtn}
@@ -384,6 +395,14 @@ const styles = StyleSheet.create({
   },
   rejectTitle: { fontSize: 14, fontWeight: '700', color: Colors.warnTintText },
   rejectSub: { fontSize: 13, color: Colors.warnTintText, marginTop: 2, marginBottom: 10 },
+  // J1d — informational pending-modification banner (no action buttons).
+  pendingBanner: {
+    marginTop: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.warnTint, borderColor: Colors.warnTintBorder, borderWidth: 1,
+    borderRadius: 10, padding: 12,
+  },
+  pendingBannerText: { flex: 1, fontSize: 13, fontWeight: '600', color: Colors.warnTintText },
   rejectBtnRow: { flexDirection: 'row', gap: 8 },
   rejectKeepBtn: {
     flex: 1, paddingVertical: 10, borderRadius: 8,

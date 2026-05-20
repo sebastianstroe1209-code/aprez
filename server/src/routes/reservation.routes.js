@@ -359,7 +359,7 @@ router.get('/mine', authenticateUser, async (req, res, next) => {
           },
         },
       },
-      orderBy: { date: 'desc' },
+      orderBy: [{ date: 'asc' }, { time: 'asc' }],
     });
 
     const shaped = reservations.map((r) => {
@@ -369,7 +369,21 @@ router.get('/mine', authenticateUser, async (req, res, next) => {
       return { ...rest, modificationPending: pending, modificationRejected: rejected };
     });
 
-    res.json({ reservations: shaped });
+    // J1d — canonical order for "my reservations": closest UPCOMING
+    // first (date+time ascending), then PAST (most-recent first). A
+    // single Prisma `orderBy` can't express the upcoming/past split, so
+    // it's composed here — the mobile ReservationsScreen tabs inherit
+    // this order directly. "Upcoming" = future-or-today date AND a
+    // non-terminal status, matching the screen's own tab predicate.
+    const TERMINAL = new Set(['CANCELLED', 'COMPLETED', 'NO_SHOW']);
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
+    const dateStr = (d) => (typeof d === 'string' ? d.slice(0, 10) : new Date(d).toISOString().slice(0, 10));
+    const sortKey = (r) => `${dateStr(r.date)}T${r.time || ''}`;
+    const isUpcoming = (r) => dateStr(r.date) >= todayStr && !TERMINAL.has(r.status);
+    const upcoming = shaped.filter(isUpcoming).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+    const past = shaped.filter((r) => !isUpcoming(r)).sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
+
+    res.json({ reservations: [...upcoming, ...past] });
   } catch (error) {
     next(error);
   }

@@ -4,11 +4,13 @@
 
 import { io } from 'socket.io-client';
 import * as SecureStore from 'expo-secure-store';
+import { DEV_API_HOST } from './devHost';
 
-// Mirror api.js base — diners hit the same host. Strip the trailing /api
-// because socket.io connects to the bare host.
+// Same host as api.js — socket.io connects to the bare host (no /api
+// suffix). Dev host lives in devHost.js (the single source shared with
+// api.js, so the two never drift).
 const SOCKET_URL = __DEV__
-  ? 'http://155.48.155.143:4000'
+  ? DEV_API_HOST
   : 'https://api.aprez.ro';
 
 let socket = null;

@@ -1,9 +1,11 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { DEV_API_HOST } from './devHost';
 
-// Your laptop's local IP — phone must be on the same WiFi network
+// Dev host (the laptop's LAN IP) lives in devHost.js — the single
+// source so api.js and socket.js never drift. Prod hits the deployed API.
 const API_BASE = __DEV__
-  ? 'http://155.48.155.143:4000/api'
+  ? `${DEV_API_HOST}/api`
   : 'https://api.aprez.ro/api';
 
 // Tier F commit 1 — for /uploads/* paths (photos + menus). The DB
