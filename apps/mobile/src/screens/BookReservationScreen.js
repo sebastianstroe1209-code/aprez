@@ -55,6 +55,8 @@ export default function BookReservationScreen({ route, navigation }) {
   const [selectedDate, setSelectedDate] = useState(dates[0]);
   const [selectedTime, setSelectedTime] = useState(null);
   const [partySize, setPartySize] = useState(2);
+  // §5.3 — optional diner free-text note (anniversary, allergies, access needs).
+  const [specialRequests, setSpecialRequests] = useState('');
   const [submitting, setSubmitting] = useState(false);
   // Step 4 is the post-booking confirmation (D2). Earlier this was an
   // Alert.alert; we promoted it to a real screen step so the optional
@@ -188,6 +190,8 @@ export default function BookReservationScreen({ route, navigation }) {
         date: formatDate(selectedDate),
         time: selectedTime,
         partySize,
+        // §5.3 — omit the key entirely when blank so the backend stores null.
+        specialRequests: specialRequests.trim() || undefined,
       });
 
       // Promote to inline step 4 instead of an Alert so the optional
@@ -314,6 +318,19 @@ export default function BookReservationScreen({ route, navigation }) {
                 );
               })}
             </ScrollView>
+
+            {/* §5.3 — optional special requests, visible to restaurant staff */}
+            <Text style={[styles.stepTitle, { marginTop: 28 }]}>{t('book.specialRequestsLabel')}</Text>
+            <TextInput
+              style={styles.specialRequestsInput}
+              value={specialRequests}
+              onChangeText={setSpecialRequests}
+              placeholder={t('book.specialRequestsPlaceholder')}
+              placeholderTextColor={Colors.textLight}
+              multiline
+              maxLength={500}
+              textAlignVertical="top"
+            />
 
             <TouchableOpacity style={styles.nextButton} onPress={() => setStep(2)}>
               <Text style={styles.nextButtonText}>Choose Time</Text>
@@ -601,6 +618,19 @@ const styles = StyleSheet.create({
   dateNumActive: { color: '#fff' },
   dateMonth: { fontSize: 12, color: Colors.textSecondary },
   dateMonthActive: { color: 'rgba(255,255,255,0.8)' },
+  // Special requests (§5.3)
+  specialRequestsInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: Colors.text,
+    backgroundColor: Colors.surface,
+    minHeight: 88,
+    marginTop: 8,
+  },
   // Time slots
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   timeSlot: {

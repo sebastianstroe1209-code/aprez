@@ -102,6 +102,10 @@
     "skipButton": "Poate mai târziu",
     "saving": "Se salvează…"
   },
+  "book": {
+    "specialRequestsLabel": "Cerințe speciale (opțional)",
+    "specialRequestsPlaceholder": "Aniversare, alergii alimentare, nevoi de accesibilitate…"
+  },
   "bookConfirm": {
     "successTitle": "Rezervare confirmată!",
     "successTitlePending": "Rezervare trimisă",

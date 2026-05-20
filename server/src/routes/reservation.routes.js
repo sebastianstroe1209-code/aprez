@@ -40,13 +40,15 @@ router.post(
     body('date').isISO8601(),
     body('time').matches(/^\d{2}:\d{2}$/),
     body('partySize').isInt({ min: 1 }),
+    // §5.3 — optional diner free-text note; capped at 500 chars.
+    body('specialRequests').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
   ],
   handleValidationErrors,
   async (req, res, next) => {
     try {
       const prisma = req.app.get('prisma');
       const userId = req.user.id;
-      const { restaurantId, date, time, partySize } = req.body;
+      const { restaurantId, date, time, partySize, specialRequests } = req.body;
 
       // Check if user is banned
       const bannedRecord = await prisma.bannedUser.findFirst({
@@ -242,6 +244,8 @@ router.post(
           status,
           tableId,
           source: 'APP',
+          // §5.3 — optional diner free-text note. Empty / whitespace → null.
+          specialRequests: specialRequests && specialRequests.trim() ? specialRequests.trim() : null,
         },
         select: {
           id: true,
@@ -252,6 +256,7 @@ router.post(
           time: true,
           endTime: true,
           partySize: true,
+          specialRequests: true,
           createdAt: true,
           user: { select: { firstName: true, lastName: true, phone: true } },
         },

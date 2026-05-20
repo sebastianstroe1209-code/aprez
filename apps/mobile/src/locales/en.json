@@ -102,6 +102,10 @@
     "skipButton": "Maybe later",
     "saving": "Saving…"
   },
+  "book": {
+    "specialRequestsLabel": "Special requests (optional)",
+    "specialRequestsPlaceholder": "Anniversary, food allergies, accessibility needs…"
+  },
   "bookConfirm": {
     "successTitle": "Reservation confirmed!",
     "successTitlePending": "Reservation submitted",
