@@ -12,7 +12,27 @@
     "locationDenied": "Enable location to sort by distance.",
     "locationError": "Couldn't get your location. Try again.",
     "distanceMeters": "{{m}}m away",
-    "distanceKm": "{{km}}km away"
+    "distanceKm": "{{km}}km away",
+    "party": {
+      "label": "Party",
+      "title": "How many guests?",
+      "stepperUp": "Add a guest",
+      "stepperDown": "Remove a guest"
+    },
+    "date": {
+      "label": "Date",
+      "title": "Choose a date",
+      "today": "Today"
+    },
+    "time": {
+      "label": "Time",
+      "title": "Choose a time"
+    },
+    "setButton": "Set",
+    "clearAll": "Clear all",
+    "allOrNoneHint": "Set party, date and time to filter by availability.",
+    "resultCount": "Available now: {{count}}",
+    "emptyState": "No restaurants available at this time. Try a different time or party size."
   },
   "tabs": {
     "home": "Home",

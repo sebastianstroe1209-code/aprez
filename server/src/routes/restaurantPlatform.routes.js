@@ -13,6 +13,7 @@ const {
   activeMergeMapForRestaurant,
   findActiveMergeForTable,
   deactivateMergesForReservation,
+  computeMergeSuggestions,
 } = require('../lib/tableMerges');
 const { ROMANIAN_PHONE_RE, PHONE_FORMAT_MSG, phoneFormatErrorBody } = require('../lib/phoneValidation');
 const { applyOpeningHours, applyServicePeriods } = require('../lib/restaurantProfile');
@@ -2315,120 +2316,11 @@ router.get(
   }
 );
 
-// Tier I commit 3 helper — enumerate adjacent table groupings that
-// together seat ≥ pSize, ranked by free-neighbor count. Reuses the
-// shared adjacency check from lib/tableMerges.js so the BFS stays in
-// one place. Caller has already filtered tables by status; this fn
-// additionally excludes tables booked in the requested time window.
-async function computeMergeSuggestions(prisma, restaurantId, tables, dateObj, timeStart, timeEnd, partySize) {
-  if (!Array.isArray(tables) || tables.length < 2) return [];
-
-  // Pull reservations in the window for ALL tables (not just
-  // candidates), since the candidate filter dropped tables with
-  // seatCount < partySize and those might still be valid merge
-  // members.
-  const conflicting = await prisma.reservation.findMany({
-    where: {
-      restaurantId,
-      date: dateObj,
-      tableId: { in: tables.map((t) => t.id) },
-      status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
-      AND: [{ time: { lt: timeEnd } }, { endTime: { gt: timeStart } }],
-    },
-    select: { tableId: true },
-  });
-  const conflictSet = new Set(conflicting.map((c) => c.tableId));
-  const free = tables.filter((t) => !conflictSet.has(t.id));
-
-  // Build a per-section adjacency map: tableId → adjacent tableIds.
-  const bySection = new Map();
-  for (const t of free) {
-    if (!bySection.has(t.sectionId)) bySection.set(t.sectionId, []);
-    bySection.get(t.sectionId).push(t);
-  }
-  const adjacency = new Map(); // tableId → Set of adjacent tableIds
-  for (const sectionTables of bySection.values()) {
-    const byCell = new Map(sectionTables.map((t) => [`${t.gridRow},${t.gridCol}`, t]));
-    for (const t of sectionTables) {
-      const neighbors = [
-        byCell.get(`${t.gridRow - 1},${t.gridCol}`),
-        byCell.get(`${t.gridRow + 1},${t.gridCol}`),
-        byCell.get(`${t.gridRow},${t.gridCol - 1}`),
-        byCell.get(`${t.gridRow},${t.gridCol + 1}`),
-      ].filter(Boolean);
-      adjacency.set(t.id, new Set(neighbors.map((n) => n.id)));
-    }
-  }
-
-  // Free-neighbor count per table — used to rank candidates that hit
-  // the partySize target equally. More free neighbors = more
-  // combining flexibility going forward.
-  const freeNeighborCount = (tableId) => (adjacency.get(tableId)?.size || 0);
-
-  // BFS-grow adjacent groups up to MAX_MERGE_MEMBERS (4 per SPEC §8.2)
-  // starting from each free table. Dedupe by sorted-id signature.
-  const seen = new Set();
-  const candidates = [];
-  const MAX = 4;
-  for (const start of free) {
-    // Frontier of partial groups: [{ ids: Set, seats: number }]
-    let frontier = [{ ids: new Set([start.id]), seats: start.seatCount }];
-    for (let depth = 1; depth < MAX; depth++) {
-      const next = [];
-      for (const g of frontier) {
-        // For each existing member, try every adjacent table not
-        // already in the group.
-        for (const memberId of g.ids) {
-          const adj = adjacency.get(memberId);
-          if (!adj) continue;
-          for (const adjId of adj) {
-            if (g.ids.has(adjId)) continue;
-            const newIds = new Set(g.ids);
-            newIds.add(adjId);
-            const adjTable = free.find((t) => t.id === adjId);
-            if (!adjTable) continue;
-            next.push({ ids: newIds, seats: g.seats + adjTable.seatCount });
-          }
-        }
-      }
-      frontier = frontier.concat(next);
-    }
-    for (const g of frontier) {
-      if (g.ids.size < 2) continue; // single-table "merges" aren't merges
-      if (g.seats < partySize) continue;
-      const sig = [...g.ids].sort().join('|');
-      if (seen.has(sig)) continue;
-      seen.add(sig);
-      const members = [...g.ids].map((id) => free.find((t) => t.id === id)).filter(Boolean);
-      // Sort member labels for a stable combinedLabel.
-      const sortedNumbers = members.map((m) => m.tableNumber).sort((a, b) => {
-        const na = parseInt(String(a).replace(/^T/i, ''), 10);
-        const nb = parseInt(String(b).replace(/^T/i, ''), 10);
-        if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-        return String(a).localeCompare(String(b));
-      });
-      // Rank score: prefer smaller merges (fewer tables → less impact),
-      // then more total free neighbors among members (flexibility).
-      const totalFreeNeighbors = members.reduce((acc, m) => acc + freeNeighborCount(m.id), 0);
-      candidates.push({
-        tableIds: [...g.ids],
-        memberLabels: sortedNumbers,
-        combinedLabel: sortedNumbers.join('+'),
-        summedSeatCount: g.seats,
-        freeNeighborCount: totalFreeNeighbors,
-      });
-    }
-  }
-  // Ranking: fewer members first (smallest viable merge wins ties),
-  // then higher free-neighbor count (combining flexibility), then
-  // smaller summedSeatCount (tighter fit to the party). Return top 3.
-  candidates.sort((a, b) => {
-    if (a.tableIds.length !== b.tableIds.length) return a.tableIds.length - b.tableIds.length;
-    if (a.freeNeighborCount !== b.freeNeighborCount) return b.freeNeighborCount - a.freeNeighborCount;
-    return a.summedSeatCount - b.summedSeatCount;
-  });
-  return candidates.slice(0, 3);
-}
+// computeMergeSuggestions (the adjacent-table merge enumerator used by
+// the Quick-Add /availability endpoint above) was moved to
+// lib/tableMerges.js in Tier G commit 5b — see the import at the top of
+// this file. It is shared with the diner-facing GET /restaurants
+// availability join so the merge-feasibility BFS lives in one place.
 
 // Waitlist routes (GET /waitlist, /waitlist/suggestions, POST /waitlist/:id/notify,
 // DELETE /waitlist/:id) removed — SPEC §6.6 cuts the waitlist system entirely.

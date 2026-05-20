@@ -3,6 +3,7 @@ const { body, param, query, validationResult } = require('express-validator');
 const { authenticateUser } = require('../middleware/auth');
 const { EVENTS, dispatchAsync } = require('../services/notifications');
 const { deactivateMergesForReservation, countFreeAdjacents } = require('../lib/tableMerges');
+const { timeMinutesFitsOpenWindow } = require('../lib/openingHours');
 
 const router = express.Router();
 
@@ -15,21 +16,11 @@ function addMinutes(timeStr, minutes) {
   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
 }
 
-// Tier E commit 2 — minute-of-day range check for opening hours that
-// handles cross-midnight close times. closeTime '00:00' represents
-// midnight at the END of the service day (effectively 24:00); without
-// this normalization a 20:00 reservation at La Mama (open 10:00 →
-// 00:00 Saturday) would 400 because raw 0 < 1200. The same parser
-// bug existed in POST /reservations until E2 — both call sites use
-// this helper now so they don't drift.
-function timeMinutesFitsOpenWindow(timeStr, openTimeStr, closeTimeStr) {
-  const toMin = (s) => parseInt(s.split(':')[0]) * 60 + parseInt(s.split(':')[1]);
-  const req = toMin(timeStr);
-  const openStart = toMin(openTimeStr);
-  let openEnd = toMin(closeTimeStr);
-  if (openEnd <= openStart) openEnd += 24 * 60; // cross-midnight (e.g. 10:00 → 00:00 = 24:00)
-  return req >= openStart && req <= openEnd;
-}
+// timeMinutesFitsOpenWindow (cross-midnight-aware open-window check) was
+// extracted to lib/openingHours.js in Tier G commit 5b so the diner
+// GET /restaurants availability join shares the exact same math — see
+// the import above. Both POST /reservations and the reservation-modify
+// route still call it; behavior is unchanged.
 
 // Middleware to check validation results
 const handleValidationErrors = (req, res, next) => {

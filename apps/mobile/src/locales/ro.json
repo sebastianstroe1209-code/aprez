@@ -12,7 +12,27 @@
     "locationDenied": "Activează locația pentru a sorta după distanță.",
     "locationError": "Nu am putut obține locația. Încearcă din nou.",
     "distanceMeters": "la {{m}} m",
-    "distanceKm": "la {{km}} km"
+    "distanceKm": "la {{km}} km",
+    "party": {
+      "label": "Persoane",
+      "title": "Câte persoane?",
+      "stepperUp": "Adaugă o persoană",
+      "stepperDown": "Scade o persoană"
+    },
+    "date": {
+      "label": "Data",
+      "title": "Alege data",
+      "today": "Azi"
+    },
+    "time": {
+      "label": "Ora",
+      "title": "Alege ora"
+    },
+    "setButton": "Setează",
+    "clearAll": "Șterge tot",
+    "allOrNoneHint": "Setează numărul de persoane, data și ora pentru a filtra după disponibilitate.",
+    "resultCount": "Disponibile acum: {{count}}",
+    "emptyState": "Niciun restaurant disponibil la această oră. Încearcă altă oră sau alt număr de persoane."
   },
   "tabs": {
     "home": "Acasă",

@@ -239,6 +239,127 @@ async function deactivateMergesForReservation(prisma, reservationId) {
   return { deactivatedGroups: groups };
 }
 
+// Enumerate adjacent table groupings that together seat ≥ partySize,
+// ranked by free-neighbor count. BFS-grows adjacent groups (same
+// section, Manhattan-1 adjacency) up to MAX_MERGE_MEMBERS starting from
+// each free table, dedupes by sorted-id signature, and returns the top 3.
+//
+// Tier I commit 3 introduced this for the staff Quick-Add /availability
+// endpoint; Tier G commit 5b moved it here (out of restaurantPlatform.
+// routes.js) so the diner-facing GET /restaurants availability join can
+// reuse the exact same merge-feasibility logic — one BFS, no drift.
+//
+// `conflictSet` (optional): when the caller already holds the set of
+// busy tableIds for the window — e.g. a batched multi-restaurant join
+// that fetched every restaurant's reservations in one query — it passes
+// that Set and this fn skips its own per-call reservation query. When
+// omitted (the original staff call site), the query runs as before.
+async function computeMergeSuggestions(
+  prisma, restaurantId, tables, dateObj, timeStart, timeEnd, partySize, conflictSet = null
+) {
+  if (!Array.isArray(tables) || tables.length < 2) return [];
+
+  let busy = conflictSet;
+  if (!busy) {
+    // Reservations in the window for ALL passed tables. The caller's
+    // candidate filter may have dropped tables with seatCount < party,
+    // but those are still valid merge MEMBERS, so the caller passes the
+    // wider pool here.
+    const conflicting = await prisma.reservation.findMany({
+      where: {
+        restaurantId,
+        date: dateObj,
+        tableId: { in: tables.map((t) => t.id) },
+        status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
+        AND: [{ time: { lt: timeEnd } }, { endTime: { gt: timeStart } }],
+      },
+      select: { tableId: true },
+    });
+    busy = new Set(conflicting.map((c) => c.tableId));
+  }
+  const free = tables.filter((t) => !busy.has(t.id));
+
+  // Per-section adjacency map: tableId → Set of adjacent free tableIds.
+  const bySection = new Map();
+  for (const t of free) {
+    if (!bySection.has(t.sectionId)) bySection.set(t.sectionId, []);
+    bySection.get(t.sectionId).push(t);
+  }
+  const adjacency = new Map();
+  for (const sectionTables of bySection.values()) {
+    const byCell = new Map(sectionTables.map((t) => [`${t.gridRow},${t.gridCol}`, t]));
+    for (const t of sectionTables) {
+      const neighbors = [
+        byCell.get(`${t.gridRow - 1},${t.gridCol}`),
+        byCell.get(`${t.gridRow + 1},${t.gridCol}`),
+        byCell.get(`${t.gridRow},${t.gridCol - 1}`),
+        byCell.get(`${t.gridRow},${t.gridCol + 1}`),
+      ].filter(Boolean);
+      adjacency.set(t.id, new Set(neighbors.map((n) => n.id)));
+    }
+  }
+
+  // More free neighbors = more combining flexibility going forward;
+  // used to rank candidates that hit the partySize target equally.
+  const freeNeighborCount = (tableId) => (adjacency.get(tableId)?.size || 0);
+
+  // BFS-grow adjacent groups up to MAX_MERGE_MEMBERS (SPEC §8.2) from
+  // each free table. Dedupe by sorted-id signature.
+  const seen = new Set();
+  const candidates = [];
+  for (const start of free) {
+    let frontier = [{ ids: new Set([start.id]), seats: start.seatCount }];
+    for (let depth = 1; depth < MAX_MERGE_MEMBERS; depth++) {
+      const next = [];
+      for (const g of frontier) {
+        for (const memberId of g.ids) {
+          const adj = adjacency.get(memberId);
+          if (!adj) continue;
+          for (const adjId of adj) {
+            if (g.ids.has(adjId)) continue;
+            const newIds = new Set(g.ids);
+            newIds.add(adjId);
+            const adjTable = free.find((t) => t.id === adjId);
+            if (!adjTable) continue;
+            next.push({ ids: newIds, seats: g.seats + adjTable.seatCount });
+          }
+        }
+      }
+      frontier = frontier.concat(next);
+    }
+    for (const g of frontier) {
+      if (g.ids.size < MIN_MERGE_MEMBERS) continue; // single-table "merges" aren't merges
+      if (g.seats < partySize) continue;
+      const sig = [...g.ids].sort().join('|');
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+      const members = [...g.ids].map((id) => free.find((t) => t.id === id)).filter(Boolean);
+      const sortedNumbers = members.map((m) => m.tableNumber).sort((a, b) => {
+        const na = parseInt(String(a).replace(/^T/i, ''), 10);
+        const nb = parseInt(String(b).replace(/^T/i, ''), 10);
+        if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+        return String(a).localeCompare(String(b));
+      });
+      const totalFreeNeighbors = members.reduce((acc, m) => acc + freeNeighborCount(m.id), 0);
+      candidates.push({
+        tableIds: [...g.ids],
+        memberLabels: sortedNumbers,
+        combinedLabel: sortedNumbers.join('+'),
+        summedSeatCount: g.seats,
+        freeNeighborCount: totalFreeNeighbors,
+      });
+    }
+  }
+  // Ranking: fewer members first (smallest viable merge wins ties),
+  // then higher free-neighbor count, then smaller summedSeatCount.
+  candidates.sort((a, b) => {
+    if (a.tableIds.length !== b.tableIds.length) return a.tableIds.length - b.tableIds.length;
+    if (a.freeNeighborCount !== b.freeNeighborCount) return b.freeNeighborCount - a.freeNeighborCount;
+    return a.summedSeatCount - b.summedSeatCount;
+  });
+  return candidates.slice(0, 3);
+}
+
 module.exports = {
   MAX_MERGE_MEMBERS,
   MIN_MERGE_MEMBERS,
@@ -251,4 +372,5 @@ module.exports = {
   loadMergeGroup,
   activeMergeMapForRestaurant,
   deactivateMergesForReservation,
+  computeMergeSuggestions,
 };

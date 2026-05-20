@@ -1,6 +1,8 @@
 const express = require('express');
 const { query, param, validationResult } = require('express-validator');
 const { authenticateUser } = require('../middleware/auth');
+const { computeMergeSuggestions } = require('../lib/tableMerges');
+const { timeMinutesFitsOpenWindow, timeWithinServicePeriods } = require('../lib/openingHours');
 
 const router = express.Router();
 
@@ -11,6 +13,118 @@ function addMinutes(timeStr, minutes) {
   const newH = Math.floor(totalMin / 60) % 24;
   const newM = totalMin % 60;
   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
+
+// Group an array of rows into a Map keyed by `row[key]`.
+function groupBy(rows, key) {
+  const m = new Map();
+  for (const row of rows) {
+    if (!m.has(row[key])) m.set(row[key], []);
+    m.get(row[key]).push(row);
+  }
+  return m;
+}
+
+// Tier G commit 5b — diner home availability join (SPEC §5.1).
+//
+// Given a list of restaurants the diner can already see (cuisine /
+// search / banned filters applied), keep only those that could seat
+// `partySize` for the requested `date` + `time` over a flat 120-minute
+// window. A restaurant qualifies when AT LEAST ONE seating arrangement
+// works: a single free table that fits the party, OR a feasible merge
+// of adjacent free tables summing to ≥ partySize (same BFS the staff
+// Quick-Add uses, via lib/tableMerges.computeMergeSuggestions).
+//
+// Design notes:
+//   * Every per-restaurant lookup is BATCHED — 5 queries total, not
+//     5×N — keyed back to each restaurant in memory.
+//   * The window is a flat 120 min (the SPEC default
+//     reservationDurationMin). A venue with a custom duration is
+//     filtered slightly approximately; per the G5b brief, "reasonable
+//     filtering" on the home list is the goal, not staff-grade
+//     precision.
+//   * Bias is toward FALSE POSITIVES: the single-table check uses
+//     seatCount ≥ partySize (not exact), because a larger free table
+//     still seats the party — excluding it would be a false negative,
+//     and the diner sees an honest "no tables" only if they actually
+//     try to book. Stale data between this join and the booking POST
+//     is an accepted race.
+async function filterByAvailability(prisma, restaurants, date, time, partySize) {
+  const ids = restaurants.map((r) => r.id);
+  const dateObj = new Date(date);
+  const jsDay = dateObj.getUTCDay(); // 0=Sun
+  const schemaDayOfWeek = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon..6=Sun
+  const requestedEnd = addMinutes(time, 120);
+
+  const [openingHours, servicePeriods, disabledRows, tables, reservations] = await Promise.all([
+    prisma.openingHours.findMany({
+      where: { restaurantId: { in: ids }, dayOfWeek: schemaDayOfWeek, isOpen: true },
+      select: { restaurantId: true, openTime: true, closeTime: true },
+    }),
+    prisma.servicePeriod.findMany({
+      where: { restaurantId: { in: ids }, daysOfWeek: { has: schemaDayOfWeek } },
+      select: { restaurantId: true, startTime: true, endTime: true },
+    }),
+    prisma.disabledDate.findMany({
+      where: { restaurantId: { in: ids }, date: dateObj },
+      select: { restaurantId: true },
+    }),
+    prisma.restaurantTable.findMany({
+      where: {
+        restaurantId: { in: ids },
+        isActive: true,
+        status: { notIn: ['OCCUPIED', 'OUT_OF_SERVICE'] },
+      },
+      select: {
+        id: true, restaurantId: true, tableNumber: true,
+        seatCount: true, gridRow: true, gridCol: true, sectionId: true,
+      },
+    }),
+    prisma.reservation.findMany({
+      where: {
+        restaurantId: { in: ids },
+        date: dateObj,
+        status: { in: ['CONFIRMED', 'PENDING', 'AUTO_CONFIRMED'] },
+        tableId: { not: null },
+        AND: [{ time: { lt: requestedEnd } }, { endTime: { gt: time } }],
+      },
+      select: { restaurantId: true, tableId: true },
+    }),
+  ]);
+
+  const openByR = new Map(openingHours.map((o) => [o.restaurantId, o]));
+  const periodsByR = groupBy(servicePeriods, 'restaurantId');
+  const disabledR = new Set(disabledRows.map((d) => d.restaurantId));
+  const tablesByR = groupBy(tables, 'restaurantId');
+  const busyByR = new Map();
+  for (const rv of reservations) {
+    if (!busyByR.has(rv.restaurantId)) busyByR.set(rv.restaurantId, new Set());
+    busyByR.get(rv.restaurantId).add(rv.tableId);
+  }
+
+  const out = [];
+  for (const r of restaurants) {
+    if (disabledR.has(r.id)) continue; // restaurant marked this date unavailable
+    const oh = openByR.get(r.id);
+    if (!oh || !timeMinutesFitsOpenWindow(time, oh.openTime, oh.closeTime)) continue; // closed
+    if (!timeWithinServicePeriods(time, periodsByR.get(r.id) || [])) continue; // outside service period
+
+    const rTables = tablesByR.get(r.id) || [];
+    const busy = busyByR.get(r.id) || new Set();
+    const freeTables = rTables.filter((t) => !busy.has(t.id));
+
+    // A single free table that fits the party (permissive: ≥, not exact).
+    let qualifies = freeTables.some((t) => t.seatCount >= partySize);
+    // …otherwise an adjacent merge of free tables that sums to ≥ party.
+    if (!qualifies && freeTables.length >= 2) {
+      const merges = await computeMergeSuggestions(
+        prisma, r.id, rTables, dateObj, time, requestedEnd, partySize, busy
+      );
+      qualifies = merges.length > 0;
+    }
+    if (qualifies) out.push(r);
+  }
+  return out;
 }
 
 // Helper function to calculate distance between two coordinates (Haversine formula)
@@ -53,6 +167,45 @@ router.get(
       const prisma = req.app.get('prisma');
       const userId = req.user.id;
       const { cuisine, search, lat, lng } = req.query;
+
+      // Tier G commit 5b — party/date/time availability filter (§5.1).
+      // ALL-OR-NONE: the filter engages only when all three params are
+      // present; any subset is ignored and the list behaves exactly as
+      // before. Each param is still format-validated when present (so a
+      // malformed value 400s rather than silently no-op'ing), with a
+      // structured { error: { code } } body matching the Tier E/F
+      // contract.
+      const { partySize: qParty, date: qDate, time: qTime } = req.query;
+
+      let pSize = null;
+      if (qParty !== undefined) {
+        pSize = Number(qParty);
+        if (!Number.isInteger(pSize) || pSize < 1 || pSize > 30) {
+          return res.status(400).json({
+            error: { code: 'invalid-party-size', message: 'Party size must be a whole number between 1 and 30.' },
+          });
+        }
+      }
+      if (qDate !== undefined) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(qDate) || Number.isNaN(new Date(`${qDate}T00:00:00Z`).getTime())) {
+          return res.status(400).json({
+            error: { code: 'invalid-date', message: 'Date must be a valid YYYY-MM-DD date.' },
+          });
+        }
+        // "Today" in Europe/Bucharest — string-comparable with qDate.
+        const todayBucharest = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Bucharest' }).format(new Date());
+        if (qDate < todayBucharest) {
+          return res.status(400).json({
+            error: { code: 'date-in-past', message: 'Date must be today or in the future.' },
+          });
+        }
+      }
+      if (qTime !== undefined && !/^([01]\d|2[0-3]):(00|15|30|45)$/.test(qTime)) {
+        return res.status(400).json({
+          error: { code: 'invalid-time', message: 'Time must be HH:mm on a 15-minute boundary.' },
+        });
+      }
+      const filterEngaged = qParty !== undefined && qDate !== undefined && qTime !== undefined;
 
       // Fetch all active restaurants
       let restaurants = await prisma.restaurant.findMany({
@@ -113,6 +266,14 @@ router.get(
               : undefined;
           return { ...r, distance };
         });
+
+      // Availability join (G5b) — runs after cuisine/search/banned so it
+      // only inspects the restaurants the diner would otherwise see, and
+      // before the distance sort so the ordering reflects the filtered
+      // set. Composes with every existing param.
+      if (filterEngaged && restaurants.length > 0) {
+        restaurants = await filterByAvailability(prisma, restaurants, qDate, qTime, pSize);
+      }
 
       // Sort by distance if coordinates provided
       if (lat && lng) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,14 @@ import {
   Image,
   ActivityIndicator,
   SafeAreaView,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../lib/colors';
+import { formatDate } from '../lib/format';
 import api from '../lib/api';
 
 const CUISINE_FILTERS = [
@@ -43,8 +46,48 @@ const CUISINE_FILTERS = [
   'Traditional',
 ];
 
+// G5b — time-picker range. The home screen has no per-restaurant
+// opening hours loaded (the list payload omits them), so the slot list
+// uses a fixed 08:00–23:45 window that covers virtually every venue;
+// the backend availability join is the real authority on whether a
+// slot is serviceable.
+const TIME_MIN = 8 * 60;
+const TIME_MAX = 23 * 60 + 45;
+const pad = (n) => String(n).padStart(2, '0');
+const minToHHmm = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+const TIME_SLOTS = (() => {
+  const slots = [];
+  for (let m = TIME_MIN; m <= TIME_MAX; m += 15) slots.push(minToHHmm(m));
+  return slots;
+})();
+const isoLocal = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const firstOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+
+// Next 30-minute slot from now, clamped into the slot range — the
+// Time picker's default.
+function defaultTimeSlot() {
+  const now = new Date();
+  let m = (Math.floor((now.getHours() * 60 + now.getMinutes()) / 30) + 1) * 30;
+  if (m < TIME_MIN) m = TIME_MIN;
+  if (m > TIME_MAX) m = TIME_MAX;
+  return minToHHmm(m);
+}
+
+// Month grid cells (Monday-first); null entries are leading/trailing pads.
+function buildMonthCells(monthDate) {
+  const y = monthDate.getFullYear();
+  const mo = monthDate.getMonth();
+  const daysInMonth = new Date(y, mo + 1, 0).getDate();
+  const lead = (new Date(y, mo, 1).getDay() + 6) % 7;
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, mo, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
 export default function HomeScreen({ navigation }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -57,6 +100,38 @@ export default function HomeScreen({ navigation }) {
   const [coords, setCoords] = useState(null);
   const [locating, setLocating] = useState(false);
   const [locationMsg, setLocationMsg] = useState('');
+  // G5b — party/date/time availability filter. All three must be set
+  // before any query param is sent (all-or-none); until then the list
+  // stays unfiltered.
+  const [partyFilter, setPartyFilter] = useState(null);
+  const [dateFilter, setDateFilter] = useState(null); // 'YYYY-MM-DD'
+  const [timeFilter, setTimeFilter] = useState(null); // 'HH:mm'
+  const [activePicker, setActivePicker] = useState(null); // 'party' | 'date' | 'time' | null
+  // Picker draft values — committed to the filters only on "Set".
+  const [draftParty, setDraftParty] = useState(2);
+  const [draftDate, setDraftDate] = useState(null);
+  const [draftTime, setDraftTime] = useState(null);
+  const [calMonth, setCalMonth] = useState(() => firstOfMonth(new Date()));
+
+  const todayIso = useMemo(() => isoLocal(new Date()), []);
+  const currentMonth = useMemo(() => firstOfMonth(new Date()), []);
+
+  // Monday-first weekday initials, localized via Intl from this week's
+  // Monday — no hardcoded day-name strings to translate.
+  const weekdayLabels = useMemo(() => {
+    const monday = new Date();
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    const fmt = new Intl.DateTimeFormat(i18n.language, { weekday: 'narrow' });
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return fmt.format(d);
+    });
+  }, [i18n.language]);
+
+  const filtersSet = partyFilter != null && dateFilter != null && timeFilter != null;
+  const someFiltersSet = partyFilter != null || dateFilter != null || timeFilter != null;
+  const needsAttention = someFiltersSet && !filtersSet;
 
   const loadRestaurants = useCallback(async () => {
     try {
@@ -67,6 +142,13 @@ export default function HomeScreen({ navigation }) {
         params.lat = coords.lat;
         params.lng = coords.lng;
       }
+      // All-or-none: only send the availability params once all three
+      // are set, so a half-configured filter never narrows the list.
+      if (partyFilter != null && dateFilter != null && timeFilter != null) {
+        params.partySize = partyFilter;
+        params.date = dateFilter;
+        params.time = timeFilter;
+      }
       const res = await api.get('/restaurants', { params });
       setRestaurants(res.data.restaurants || res.data || []);
     } catch (e) {
@@ -75,7 +157,7 @@ export default function HomeScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [search, activeCuisine, locationActive, coords]);
+  }, [search, activeCuisine, locationActive, coords, partyFilter, dateFilter, timeFilter]);
 
   // G5a — toggle the location filter. Permissions are requested only on
   // this explicit tap (never on render); Expo caches the grant so an
@@ -113,6 +195,80 @@ export default function HomeScreen({ navigation }) {
   const onRefresh = () => {
     setRefreshing(true);
     loadRestaurants();
+  };
+
+  // Seed the draft from the committed value (or a default) and open.
+  const openPicker = (which) => {
+    if (which === 'party') {
+      setDraftParty(partyFilter ?? 2);
+    } else if (which === 'date') {
+      const seed = dateFilter ?? todayIso;
+      setDraftDate(seed);
+      setCalMonth(firstOfMonth(new Date(`${seed}T00:00:00`)));
+    } else if (which === 'time') {
+      setDraftTime(timeFilter ?? defaultTimeSlot());
+    }
+    setActivePicker(which);
+  };
+
+  const applyPicker = () => {
+    if (activePicker === 'party') setPartyFilter(draftParty);
+    else if (activePicker === 'date') setDateFilter(draftDate);
+    else if (activePicker === 'time') setTimeFilter(draftTime);
+    setActivePicker(null);
+  };
+
+  const clearAllFilters = () => {
+    setPartyFilter(null);
+    setDateFilter(null);
+    setTimeFilter(null);
+  };
+
+  const dateChipLabel =
+    dateFilter == null
+      ? t('homeFilters.date.label')
+      : dateFilter === todayIso
+        ? t('homeFilters.date.today')
+        : formatDate(dateFilter);
+
+  // A filter chip. `value` null → shows the label; set → shows the
+  // value with an inline clear ×. When the filter is half-set, an
+  // unset chip is highlighted to hint it still needs a value.
+  const renderFilterChip = (which, icon, label, value, onClear) => {
+    const isSet = value != null;
+    const hint = needsAttention && !isSet;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.filterChip,
+          styles.iconChip,
+          isSet && styles.filterChipActive,
+          hint && styles.filterChipHint,
+        ]}
+        onPress={() => openPicker(which)}
+        activeOpacity={0.7}
+      >
+        <Ionicons
+          name={icon}
+          size={14}
+          color={isSet ? '#fff' : hint ? Colors.primary : Colors.textSecondary}
+        />
+        <Text
+          style={[
+            styles.filterText,
+            isSet && styles.filterTextActive,
+            hint && styles.filterTextHint,
+          ]}
+        >
+          {isSet ? String(value) : label}
+        </Text>
+        {isSet && (
+          <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close-circle" size={15} color="rgba(255,255,255,0.85)" />
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    );
   };
 
   const renderRestaurant = ({ item }) => (
@@ -194,10 +350,10 @@ export default function HomeScreen({ navigation }) {
         )}
       </View>
 
-      {/* Location filter (G5a) */}
+      {/* Filter chips — Nearby (G5a) + Party / Date / Time (G5b) */}
       <View style={styles.locationRow}>
         <TouchableOpacity
-          style={[styles.filterChip, styles.locationChip, locationActive && styles.filterChipActive]}
+          style={[styles.filterChip, styles.iconChip, locationActive && styles.filterChipActive]}
           onPress={handleLocationToggle}
           disabled={locating}
           activeOpacity={0.7}
@@ -215,8 +371,43 @@ export default function HomeScreen({ navigation }) {
             {locating ? t('homeFilters.locating') : t('homeFilters.nearby')}
           </Text>
         </TouchableOpacity>
+
+        {renderFilterChip(
+          'party', 'people-outline', t('homeFilters.party.label'), partyFilter,
+          () => setPartyFilter(null),
+        )}
+        {renderFilterChip(
+          'date', 'calendar-outline', t('homeFilters.date.label'),
+          dateFilter == null ? null : dateChipLabel,
+          () => setDateFilter(null),
+        )}
+        {renderFilterChip(
+          'time', 'time-outline', t('homeFilters.time.label'), timeFilter,
+          () => setTimeFilter(null),
+        )}
+
+        {filtersSet && (
+          <TouchableOpacity
+            style={[styles.filterChip, styles.iconChip]}
+            onPress={clearAllFilters}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close" size={14} color={Colors.textSecondary} />
+            <Text style={styles.filterText}>{t('homeFilters.clearAll')}</Text>
+          </TouchableOpacity>
+        )}
+
         {locationMsg ? <Text style={styles.locationMsg}>{locationMsg}</Text> : null}
       </View>
+
+      {/* All-or-none hint / result count */}
+      {needsAttention ? (
+        <Text style={styles.allOrNoneHint}>{t('homeFilters.allOrNoneHint')}</Text>
+      ) : filtersSet && !loading ? (
+        <Text style={styles.resultCount}>
+          {t('homeFilters.resultCount', { count: restaurants.length })}
+        </Text>
+      ) : null}
 
       {/* Cuisine Filters */}
       <FlatList
@@ -253,13 +444,159 @@ export default function HomeScreen({ navigation }) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
           ListEmptyComponent={
             <View style={styles.centered}>
-              <Ionicons name="restaurant-outline" size={48} color={Colors.textLight} />
-              <Text style={styles.emptyText}>No restaurants found</Text>
-              <Text style={styles.emptySubtext}>Try a different search or filter</Text>
+              <Ionicons
+                name={filtersSet ? 'time-outline' : 'restaurant-outline'}
+                size={48}
+                color={Colors.textLight}
+              />
+              <Text style={styles.emptyText}>
+                {filtersSet ? t('homeFilters.emptyState') : 'No restaurants found'}
+              </Text>
+              {!filtersSet && (
+                <Text style={styles.emptySubtext}>Try a different search or filter</Text>
+              )}
             </View>
           }
         />
       )}
+
+      {/* Picker modal — Party / Date / Time */}
+      <Modal
+        visible={activePicker !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setActivePicker(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setActivePicker(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+
+            {/* Party stepper */}
+            {activePicker === 'party' && (
+              <>
+                <Text style={styles.sheetTitle}>{t('homeFilters.party.title')}</Text>
+                <View style={styles.stepperRow}>
+                  <TouchableOpacity
+                    style={[styles.stepBtn, draftParty <= 1 && styles.stepBtnDisabled]}
+                    onPress={() => setDraftParty(Math.max(1, draftParty - 1))}
+                    disabled={draftParty <= 1}
+                    accessibilityLabel={t('homeFilters.party.stepperDown')}
+                  >
+                    <Ionicons name="remove" size={26} color={Colors.text} />
+                  </TouchableOpacity>
+                  <View style={styles.stepValue}>
+                    <Ionicons name="people" size={22} color={Colors.primary} />
+                    <Text style={styles.stepNumber}>{draftParty}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.stepBtn, draftParty >= 30 && styles.stepBtnDisabled]}
+                    onPress={() => setDraftParty(Math.min(30, draftParty + 1))}
+                    disabled={draftParty >= 30}
+                    accessibilityLabel={t('homeFilters.party.stepperUp')}
+                  >
+                    <Ionicons name="add" size={26} color={Colors.text} />
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* Date calendar grid */}
+            {activePicker === 'date' && (
+              <>
+                <Text style={styles.sheetTitle}>{t('homeFilters.date.title')}</Text>
+                <View style={styles.calHeader}>
+                  <TouchableOpacity
+                    onPress={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))}
+                    disabled={calMonth.getTime() <= currentMonth.getTime()}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons
+                      name="chevron-back"
+                      size={22}
+                      color={calMonth.getTime() <= currentMonth.getTime() ? Colors.borderLight : Colors.text}
+                    />
+                  </TouchableOpacity>
+                  <Text style={styles.calMonthLabel}>
+                    {new Intl.DateTimeFormat(i18n.language, { month: 'long', year: 'numeric' }).format(calMonth)}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="chevron-forward" size={22} color={Colors.text} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.weekRow}>
+                  {weekdayLabels.map((w, i) => (
+                    <Text key={i} style={styles.weekday}>{w}</Text>
+                  ))}
+                </View>
+                <View style={styles.calGrid}>
+                  {buildMonthCells(calMonth).map((cell, i) => {
+                    if (!cell) return <View key={`p${i}`} style={styles.dayCell} />;
+                    const iso = isoLocal(cell);
+                    const isPast = iso < todayIso;
+                    const isSelected = iso === draftDate;
+                    return (
+                      <TouchableOpacity
+                        key={iso}
+                        style={[
+                          styles.dayCell,
+                          isSelected && styles.dayCellSelected,
+                          isPast && styles.dayCellDisabled,
+                        ]}
+                        disabled={isPast}
+                        onPress={() => setDraftDate(iso)}
+                      >
+                        <Text
+                          style={[
+                            styles.dayText,
+                            isSelected && styles.dayTextSelected,
+                            isPast && styles.dayTextDisabled,
+                          ]}
+                        >
+                          {cell.getDate()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* Time slots */}
+            {activePicker === 'time' && (
+              <>
+                <Text style={styles.sheetTitle}>{t('homeFilters.time.title')}</Text>
+                <ScrollView style={styles.timeScroll} contentContainerStyle={styles.timeGrid}>
+                  {TIME_SLOTS.map((slot) => {
+                    const isSelected = slot === draftTime;
+                    return (
+                      <TouchableOpacity
+                        key={slot}
+                        style={[styles.timeSlot, isSelected && styles.timeSlotActive]}
+                        onPress={() => setDraftTime(slot)}
+                      >
+                        <Text style={[styles.timeSlotText, isSelected && styles.timeSlotTextActive]}>
+                          {slot}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+
+            <TouchableOpacity style={styles.setButton} onPress={applyPicker}>
+              <Text style={styles.setButtonText}>{t('homeFilters.setButton')}</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -289,8 +626,21 @@ const styles = StyleSheet.create({
     marginTop: 12,
     gap: 10,
   },
-  locationChip: { flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 0 },
+  iconChip: { flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 0 },
   locationMsg: { fontSize: 12, color: Colors.textSecondary, flex: 1 },
+  allOrNoneHint: {
+    fontSize: 12,
+    color: Colors.primary,
+    paddingHorizontal: 20,
+    marginTop: 10,
+  },
+  resultCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    paddingHorizontal: 20,
+    marginTop: 10,
+  },
   filterList: { maxHeight: 48, marginTop: 12 },
   filterContent: { paddingHorizontal: 16, gap: 8 },
   filterChip: {
@@ -306,8 +656,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
+  // Half-set hint — an unset filter chip while the other(s) are set.
+  filterChipHint: {
+    backgroundColor: Colors.primaryBg,
+    borderColor: Colors.primary,
+  },
   filterText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
   filterTextActive: { color: '#fff' },
+  filterTextHint: { color: Colors.primary },
   listContent: { padding: 20, paddingTop: 12 },
   card: {
     backgroundColor: Colors.surface,
@@ -337,6 +693,116 @@ const styles = StyleSheet.create({
   cardAddress: { fontSize: 13, color: Colors.textSecondary, flex: 1 },
   cardDistance: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
-  emptyText: { fontSize: 17, fontWeight: '600', color: Colors.textSecondary, marginTop: 12 },
+  emptyText: { fontSize: 17, fontWeight: '600', color: Colors.textSecondary, marginTop: 12, textAlign: 'center', paddingHorizontal: 32 },
   emptySubtext: { fontSize: 14, color: Colors.textLight, marginTop: 4 },
+  // Picker modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 32,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 16 },
+  // Party stepper
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 28,
+    paddingVertical: 8,
+  },
+  stepBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBtnDisabled: { opacity: 0.4 },
+  stepValue: { alignItems: 'center', minWidth: 72 },
+  stepNumber: { fontSize: 40, fontWeight: '800', color: Colors.text, marginTop: 2 },
+  // Calendar
+  calHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  calMonthLabel: { fontSize: 15, fontWeight: '700', color: Colors.text, textTransform: 'capitalize' },
+  weekRow: { flexDirection: 'row', marginBottom: 4 },
+  weekday: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textLight,
+  },
+  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dayCell: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 2,
+  },
+  dayCellSelected: {},
+  dayCellDisabled: {},
+  dayText: {
+    fontSize: 15,
+    color: Colors.text,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    lineHeight: 38,
+  },
+  dayTextSelected: {
+    backgroundColor: Colors.primary,
+    color: '#fff',
+    fontWeight: '700',
+    overflow: 'hidden',
+  },
+  dayTextDisabled: { color: Colors.borderLight },
+  // Time grid
+  timeScroll: { maxHeight: 320 },
+  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 4 },
+  timeSlot: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  timeSlotActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  timeSlotText: { fontSize: 14, fontWeight: '600', color: Colors.text },
+  timeSlotTextActive: { color: '#fff' },
+  // Set button
+  setButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  setButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
