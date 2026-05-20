@@ -53,30 +53,61 @@ export async function configureReminderCategory() {
 // already denied — iOS treats repeated requests poorly, and a denied
 // user is handled by the §10 SMS-fallback chain anyway.
 export async function registerPushToken() {
+  // TEMPORARY DEBUG INSTRUMENTATION — Tier J launch QA.
+  // Accumulates step-by-step state and surfaces it in a single Alert at the end
+  // so we can diagnose why expoPushToken isn't reaching the backend on TestFlight.
+  // REMOVE this debug variant once push registration is verified working.
+  const debug = [];
   try {
+    debug.push('start');
     const settings = await Notifications.getPermissionsAsync();
     let status = settings.status;
+    debug.push(`perm=${status}`);
     if (status === 'undetermined') {
       const req = await Notifications.requestPermissionsAsync();
       status = req.status;
+      debug.push(`perm-after-req=${status}`);
     }
-    if (status !== 'granted') return; // denied / still-undetermined — stop, don't nag
+    if (status !== 'granted') {
+      Alert.alert('Push DEBUG', debug.join('\n') + '\nSTOP: no perm');
+      return;
+    }
 
-    const tokenResp = await Notifications.getExpoPushTokenAsync();
+    let tokenResp;
+    try {
+      tokenResp = await Notifications.getExpoPushTokenAsync();
+    } catch (e) {
+      debug.push(`getToken-throw: ${e?.name}: ${e?.message}`);
+      Alert.alert('Push DEBUG', debug.join('\n'));
+      return;
+    }
     const token = tokenResp?.data;
-    if (!token) return;
+    debug.push(`token=${token ? token.slice(0, 30) + '…' : 'NULL'}`);
+    if (!token) {
+      Alert.alert('Push DEBUG', debug.join('\n'));
+      return;
+    }
 
-    // Only POST when the token differs from what we last uploaded —
-    // covers token rotation without a needless request every launch.
     const cached = await SecureStore.getItemAsync(TOKEN_CACHE_KEY).catch(() => null);
-    if (cached === token) return;
+    debug.push(`cached-match=${cached === token}`);
+    if (cached === token) {
+      Alert.alert('Push DEBUG', debug.join('\n') + '\nSTOP: cache match');
+      return;
+    }
 
-    await api.put('/users/me/push-token', { expoPushToken: token });
+    try {
+      await api.put('/users/me/push-token', { expoPushToken: token });
+      debug.push('PUT 200');
+    } catch (e) {
+      debug.push(`PUT-err: ${e?.response?.status || ''} ${e?.message}`);
+      Alert.alert('Push DEBUG', debug.join('\n'));
+      return;
+    }
     await SecureStore.setItemAsync(TOKEN_CACHE_KEY, token).catch(() => {});
+    Alert.alert('Push DEBUG', debug.join('\n') + '\nDONE');
   } catch (e) {
-    // Permission / Expo-backend / network / POST failure — log, never
-    // crash, never retry in a tight loop. Re-attempted on next start.
-    console.log('[push] token registration skipped:', e?.message);
+    debug.push(`OUTER: ${e?.name}: ${e?.message}`);
+    Alert.alert('Push DEBUG', debug.join('\n'));
   }
 }
 
