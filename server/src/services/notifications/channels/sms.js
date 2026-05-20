@@ -1,6 +1,8 @@
-// SMS channel — Twilio credentials deferred to post-MVP per session decisions.
-// This stub logs the payload and (when a phone is available) writes a
-// Notification row so we can verify the §10 fallback routing.
+// SMS channel — STUB. Twilio is not wired for MVP launch; the SMS
+// transport is formally deferred to v1.1 — see SPEC §14 Decisions-log
+// entry "2026-05-20: SMS transport deferred to v1.1". This stub logs the
+// payload and (when a phone is available) writes a Notification row so
+// the §10 fallback routing stays auditable; it does NOT deliver an SMS.
 
 async function sendSms(prisma, _io, { recipientType, userId, restaurantId, eventKey, phone, content, lang }) {
   if (!phone) return null;

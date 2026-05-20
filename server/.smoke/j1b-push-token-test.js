@@ -21,7 +21,8 @@
 // expoPushToken to null and drops smoke Notification rows at the end.
 
 const { PrismaClient } = require('@prisma/client');
-const { sendPush } = require('../src/services/notifications/channels/push');
+const { sendPush, buildExpoMessage } = require('../src/services/notifications/channels/push');
+const { EVENTS } = require('../src/services/notifications/templates');
 
 const BASE = 'http://localhost:4000/api';
 const prisma = new PrismaClient();
@@ -88,6 +89,16 @@ async function main() {
     recipientType: 'user', userId, eventKey: 'smoke-j1b', expoPushToken: TOKEN_1, content: CONTENT, lang: 'en',
   });
   expect(f !== null && f !== undefined, `transport executed — non-null result (got ${JSON.stringify(f)?.slice(0, 80)})`);
+
+  console.log('\n[g] J1c — buildExpoMessage attaches categoryId only for the 45-min reminder');
+  const reminderMsg = buildExpoMessage({
+    expoPushToken: TOKEN_1, content: CONTENT, lang: 'en', eventKey: EVENTS.RESERVATION_REMINDER_45,
+  });
+  expect(reminderMsg.categoryId === 'reservation-reminder', `45-min reminder push carries categoryId (got ${JSON.stringify(reminderMsg.categoryId)})`);
+  const confirmMsg = buildExpoMessage({
+    expoPushToken: TOKEN_1, content: CONTENT, lang: 'en', eventKey: EVENTS.RESERVATION_CONFIRMED,
+  });
+  expect(confirmMsg.categoryId === undefined, `non-reminder push carries NO categoryId (got ${JSON.stringify(confirmMsg.categoryId)})`);
 
   console.log('\n[cleanup] reset demo expoPushToken + drop smoke notifications');
   await prisma.user.update({ where: { id: userId }, data: { expoPushToken: null } }).catch(() => {});

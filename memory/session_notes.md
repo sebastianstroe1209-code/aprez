@@ -4,7 +4,17 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-20. Tier J launch-fix 1b SHIPPED — mobile push-token registration (THE launch blocker). Commit `feat(mobile): J1b — Expo push token registration + 45-min reminder action handlers`, pushed to origin/main.**
+**Last session: 2026-05-20. Tier J launch-fix 1c SHIPPED — reminder categoryId + SMS deferral. Commit `fix(notifications): J1c — reminder categoryId on push payload + SPEC §14 SMS deferral`, pushed to origin/main. ⭐ TIER J COMPLETE END-TO-END (J1a → J1b → J1c all shipped).**
+
+- **categoryId on the reminder push.** `channels/push.js` now attaches `categoryId: 'reservation-reminder'` to the outbound Expo push — guarded by `eventKey === EVENTS.RESERVATION_REMINDER_45`, so only the 45-min reminder carries it (every other event has no notification actions). This completes §5.7's Yes/No action buttons end-to-end (J1b registered the matching mobile category; this was J1b's flagged follow-up). The message build was extracted into a pure exported `buildExpoMessage()` so the categoryId logic is smoke-assertable with no network call — `j1b-push-token-test.js` extended with `[g]` (now 11/11): reminder event → categoryId present, non-reminder → absent.
+- **SMS deferral formalized.** `channels/sms.js` is a stub (Twilio never wired). J1c promotes the deferral from a lone code comment to: a SPEC §14 Decisions-log entry ("2026-05-20: SMS transport deferred to v1.1"); a §10 launch-status note; a §15 "Polish (deferred)" v1.1-gap bullet; and the sms.js header comment now back-references §14. No behavior change — sms.js still logs + writes Notification rows for audit.
+- **Verified:** j1b smoke 11/11 (incl. the new categoryId `[g]`), C1 dispatcher 12/12, full 18-suite battery green. push.js extract is additive — `sendPush` behavior unchanged (the live exp.host transport leg still verified by j1b `[f]`). No mobile change → no bundle rebuild needed (last clean build 7.41 MB, J1b).
+
+**⭐ TIER J IMPLEMENTATION COMPLETE.** J1a (diner special-requests §5.3) + J1b (mobile push registration — the launch blocker) + J1c (reminder categoryId + SMS deferral) all shipped. The Tier-J spec-walk REDs are closed: §5.3 ✓, §5.7/§10 push delivery ✓, §10 SMS now documented-deferred (v1.1). **Final launch gate: Sebastian's real-device mobile QA pass** — walk the diner app on a physical device via Expo Go (booking incl. special-requests, login → push-permission prompt → confirm `users.expo_push_token` populates on Railway, the G4/G5/E2/F1/D2 mobile surfaces never device-walked, the 45-min reminder receipt + Yes/No buttons). After that pass is green → tag MVP launch. Open v1.1 gaps (documented, not blockers): SMS transport, Calendar OOS-history rendering, dashboard notification feed.
+
+---
+
+**Earlier last session: 2026-05-20. Tier J launch-fix 1b SHIPPED — mobile push-token registration (THE launch blocker). Commit `feat(mobile): J1b — Expo push token registration + 45-min reminder action handlers`, pushed to origin/main.**
 
 - **The blocker the Tier-J spec walk found:** backend push (dispatcher, Expo transport, reminder job — all C3) was complete, but the mobile app never obtained/uploaded a token → every `User.expoPushToken` null → every diner push silently no-op'd. §14 said push is too critical to defer → this was the one true launch blocker. J1b closes the mobile half.
 - **`expo-notifications@~0.32.17`** installed (`expo install`, SDK 54). New `apps/mobile/src/lib/pushNotifications.js`: foreground notification handler (`setNotificationHandler` at module load); `registerPushToken()` — `getPermissionsAsync` → request only if `undetermined` (never re-nags a denied user) → `getExpoPushTokenAsync` → `PUT /api/users/me/push-token`, with a SecureStore token cache so rotation re-POSTs but a stable token is a no-op; `configureReminderCategory()` — the `reservation-reminder` category w/ Yes/No action buttons (i18n); `registerReminderResponseListener()` — `actionIdentifier==='no'` → `PUT /reservations/:id/cancel` + localized Alert, Yes/plain-tap → no-op.
@@ -14,7 +24,7 @@ type: project
 - **Verified:** new smoke `server/.smoke/j1b-push-token-test.js` 9/9 (re-verifies the C3 path — `PUT /me/push-token` populates + rotates the column, empty→400, `sendPush` skips on no/bad token and runs the real Expo transport on a valid one — confirmed it POSTs to exp.host and gets a ticket). Full 18-suite battery green. Metro restarted with `--clear` after the native-module install; **Android bundle clean — HTTP 200, 7.41 MB** (+0.35 MB for expo-notifications, expected).
 - **Real-device verification (Sebastian):** in Expo Go, log in as `demo@aprez.ro` → accept the notification permission prompt → `SELECT email, expo_push_token FROM users WHERE email='demo@aprez.ro';` on Railway should show a populated `ExponentPushToken[...]` string. (Note: `getExpoPushTokenAsync` works in Expo Go without an `extra.eas.projectId`; a future EAS production build will need that field added to `app.json`.)
 
-**Tier J — J1c is the LAST commit before launch, awaits Sebastian's approval. J1c = SMS deferral:** a trivial doc-only commit — `channels/sms.js` is a stub (Twilio never wired); J1c formalizes the deferral with a SPEC §14 decision-log entry (today the deferral lives only in a code comment). Optionally fold in the ~1-line `categoryId` server addition so §5.7's reminder buttons render. After J1c → launch.
+**Tier J launch-fix 1c — SHIPPED (see the top of this file). Tier J complete.**
 
 ---
 

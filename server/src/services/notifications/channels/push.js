@@ -11,6 +11,11 @@
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const ACCESS_TOKEN = process.env.EXPO_ACCESS_TOKEN || null;
 const TOKEN_PATTERN = /^Exp(onent)?PushToken\[[^\]]+\]$/;
+const { EVENTS } = require('../templates');
+
+// Notification category the mobile app (Tier J commit 1b) registered for
+// the 45-min reminder's Yes/No action buttons.
+const REMINDER_CATEGORY_ID = 'reservation-reminder';
 
 let warnedAboutMissingAccessToken = false;
 
@@ -19,6 +24,29 @@ function maybeLogAccessTokenNote() {
     console.log('[push] EXPO_ACCESS_TOKEN not set — Expo Push running unauthenticated (acceptable for MVP volume).');
     warnedAboutMissingAccessToken = true;
   }
+}
+
+// Build the Expo push message body. Pure (no I/O) so the push-channel
+// smokes can assert its shape — notably the §5.7 reminder categoryId —
+// without a network round-trip.
+function buildExpoMessage({ expoPushToken, content, lang, data, eventKey }) {
+  const title = lang === 'ro' ? content.titleRo : content.titleEn;
+  const body = lang === 'ro' ? content.bodyRo : content.bodyEn;
+  const message = {
+    to: expoPushToken,
+    title,
+    body,
+    sound: 'default',
+  };
+  if (data && typeof data === 'object') message.data = data;
+  // §5.7 / §10 event #7 — the 45-min reservation reminder is the only
+  // push with interactive actions; the mobile app registered a matching
+  // `reservation-reminder` category (J1b) for its Yes/No buttons. Every
+  // other event has no actions, so it carries no categoryId.
+  if (eventKey === EVENTS.RESERVATION_REMINDER_45) {
+    message.categoryId = REMINDER_CATEGORY_ID;
+  }
+  return message;
 }
 
 async function sendPush(prisma, _io, { recipientType, userId, restaurantId, eventKey, expoPushToken, content, lang, data }) {
@@ -33,16 +61,7 @@ async function sendPush(prisma, _io, { recipientType, userId, restaurantId, even
 
   maybeLogAccessTokenNote();
 
-  const title = lang === 'ro' ? content.titleRo : content.titleEn;
-  const body = lang === 'ro' ? content.bodyRo : content.bodyEn;
-
-  const message = {
-    to: expoPushToken,
-    title,
-    body,
-    sound: 'default',
-  };
-  if (data && typeof data === 'object') message.data = data;
+  const message = buildExpoMessage({ expoPushToken, content, lang, data, eventKey });
 
   const headers = {
     'Content-Type': 'application/json',
@@ -112,4 +131,4 @@ async function sendPush(prisma, _io, { recipientType, userId, restaurantId, even
   return { ticketId: ticket.id };
 }
 
-module.exports = { sendPush };
+module.exports = { sendPush, buildExpoMessage };
