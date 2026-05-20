@@ -25,11 +25,9 @@ model User {
   latitude         Decimal?  @db.Decimal(10, 8)
   longitude        Decimal?  @db.Decimal(11, 8)
   preferredLanguage String   @default("ro") @map("preferred_language")
-  // Deprecated: fcmToken from the original Firebase plan. Replaced by
-  // expoPushToken in C3 (push transport switched to Expo per Sebastian's
-  // decision). Kept here unused; drop in a follow-up commit when
-  // explicit --accept-data-loss approval is given.
-  fcmToken         String?   @map("fcm_token")
+  // The original Firebase `fcmToken` column was dropped in Tier G
+  // commit 7 (2026-05-20) — push transport switched to Expo in C3, and
+  // `expoPushToken` superseded it with zero remaining readers.
   expoPushToken    String?   @map("expo_push_token")
   // Set by DELETE /api/users/me (GDPR §5.9). Auth middleware rejects
   // any diner JWT whose user has deletedAt set, invalidating outstanding
@@ -298,10 +296,9 @@ model Reservation {
   actualPartySize  Int?               @map("actual_party_size")
   status           ReservationStatus  @default(PENDING)
   source           ReservationSource  @default(APP)
-  // fromWaitlist is deprecated — Waitlist system was cut from MVP per
-  // SPEC §6.6. Column kept as default-false for backwards compatibility
-  // until a follow-up migration explicitly drops it. No new code reads it.
-  fromWaitlist     Boolean            @default(false) @map("from_waitlist")
+  // The deprecated `fromWaitlist` column (a default-false leftover of
+  // the waitlist system cut per SPEC §6.6) was dropped in Tier G
+  // commit 7 (2026-05-20) — it had no readers anywhere in the codebase.
   guestName        String?            @map("guest_name")
   guestPhone       String?            @map("guest_phone")
   guestEmail       String?            @map("guest_email")
