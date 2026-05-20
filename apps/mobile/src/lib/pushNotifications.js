@@ -10,11 +10,10 @@
 // backend, or a failed POST must never crash the app or block login —
 // they just mean "no push this session", retried on the next app start.
 
-import { Alert } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import api from './api';
-import i18n from './i18n';
+import { navigateToReservations } from './navigationRef';
 
 // Foreground display — without this the 45-min reminder is silent when
 // the diner happens to have the app open. SPEC §5.7.
@@ -26,24 +25,15 @@ Notifications.setNotificationHandler({
   }),
 });
 
-const REMINDER_CATEGORY = 'reservation-reminder';
 const TOKEN_CACHE_KEY = 'aprez.expoPushToken';
 
-// Register the §5.7 reminder's Yes/No action buttons. The server's push
-// channel sends `categoryId: 'reservation-reminder'` on every 45-min
-// reminder, which causes iOS to render these two inline actions when the
-// diner long-presses the notification on the lock screen.
-export async function configureReminderCategory() {
-  try {
-    await Notifications.setNotificationCategoryAsync(REMINDER_CATEGORY, [
-      { identifier: 'yes', buttonTitle: i18n.t('push.actionYes'), options: { opensAppToForeground: false } },
-      { identifier: 'no', buttonTitle: i18n.t('push.actionNo'), options: { opensAppToForeground: true } },
-    ]);
-  } catch (e) {
-    // Non-fatal — a category-setup failure just means no action buttons.
-    console.log('[push] category setup skipped:', e?.message);
-  }
-}
+// NOTE: J2 launch-fix removed the Yes/No action-button category. iOS's
+// long-press-to-reveal gesture proved too discoverable a UX for the
+// average diner — most just single-tapped the notification, which fell
+// through to the default-action path (no buttons rendered). The simpler
+// MVP behavior: tap = open app to Reservations tab; cancel happens via
+// the existing in-app reservation card flow. See registerReminderResponseListener
+// below for the tap handler.
 
 // Permission + token registration. Safe to call repeatedly (login,
 // register, cold-start). Never throws. Does NOT re-prompt a user who
@@ -77,42 +67,14 @@ export async function registerPushToken() {
   }
 }
 
-// 45-minute reminder action handler (SPEC §5.7). Fires when the diner
-// taps the notification or one of its action buttons. "No, cancel" →
-// shows a confirmation Alert first (added post-Tier-J-launch QA to
-// prevent accidental taps from the lock-screen long-press menu); only
-// confirmed cancels hit the server. "Yes" or a plain tap → no-op
-// (reservation stays active). Returns an unsubscribe fn for the
-// caller's cleanup.
+// 45-minute reminder tap handler (SPEC §5.7, simplified J2). Any tap on
+// the notification (banner, banner detail, or default cold-start launch
+// via the notification) navigates the diner to the Reservations tab.
+// They can cancel from there using the existing in-app flow if they
+// need to. Returns an unsubscribe fn for the caller's cleanup.
 export function registerReminderResponseListener() {
-  const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response?.notification?.request?.content?.data || {};
-    const action = response?.actionIdentifier;
-    const reservationId = data.reservationId;
-    if (action !== 'no' || !reservationId) return; // 'yes' / default tap → no-op
-
-    Alert.alert(
-      i18n.t('push.confirmCancelTitle'),
-      i18n.t('push.confirmCancelBody'),
-      [
-        { text: i18n.t('push.confirmCancelKeep'), style: 'cancel' },
-        {
-          text: i18n.t('push.confirmCancelConfirm'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.put(`/reservations/${reservationId}/cancel`);
-              Alert.alert(i18n.t('push.cancelledTitle'), i18n.t('push.cancelledBody'));
-            } catch (e) {
-              // 4xx/5xx or network — log, don't retry; the diner can still
-              // cancel in-app from the reservation detail screen.
-              console.log('[push] reminder cancel failed:', e?.message);
-            }
-          },
-        },
-      ],
-      { cancelable: true },
-    );
+  const sub = Notifications.addNotificationResponseReceivedListener(() => {
+    navigateToReservations();
   });
   return () => sub.remove();
 }

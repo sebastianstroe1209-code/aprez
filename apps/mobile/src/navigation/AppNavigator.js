@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../lib/colors';
 import { useAuth } from '../contexts/AuthContext';
+import { navigationRef } from '../lib/navigationRef';
 
 // Screens
 import LoginScreen from '../screens/LoginScreen';
@@ -163,7 +164,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer ref={navigationRef} linking={linking}>
       {user ? <AppStack /> : <AuthStack />}
     </NavigationContainer>
   );
