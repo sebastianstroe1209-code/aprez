@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import api, { getErrorMessage } from '../lib/api';
 import { getSocket, resetSocket } from '../lib/socket';
 import { setLocale as setI18nLocale } from '../lib/i18n';
+import { registerPushToken } from '../lib/pushNotifications';
 
 const AuthContext = createContext(null);
 
@@ -22,6 +23,10 @@ export function AuthProvider({ children }) {
       if (token) {
         const res = await api.get('/users/me');
         setUser(res.data);
+        // J1b — cold-start push-token re-check: catches the diner who
+        // granted notification permission via system Settings without
+        // re-logging-in, plus token rotation. Fire-and-forget.
+        registerPushToken();
         // C4: spin up the socket once we know the user is authenticated so
         // §5a events arrive on user:{id}.
         getSocket().catch(() => {});
@@ -50,6 +55,9 @@ export function AuthProvider({ children }) {
       // Rebuild the socket so the handshake picks up the new token.
       resetSocket();
       getSocket().catch(() => {});
+      // J1b — register/refresh the Expo push token. Fire-and-forget,
+      // fully self-guarded; never blocks or fails login.
+      registerPushToken();
       return true;
     } catch (e) {
       setError(getErrorMessage(e));
@@ -71,6 +79,8 @@ export function AuthProvider({ children }) {
       setUser(res.data.user);
       resetSocket();
       getSocket().catch(() => {});
+      // J1b — register the Expo push token for the new account.
+      registerPushToken();
       return true;
     } catch (e) {
       setError(getErrorMessage(e));

@@ -106,6 +106,12 @@
     "specialRequestsLabel": "Cerințe speciale (opțional)",
     "specialRequestsPlaceholder": "Aniversare, alergii alimentare, nevoi de accesibilitate…"
   },
+  "push": {
+    "actionYes": "Da, voi veni",
+    "actionNo": "Nu, anulează",
+    "cancelledTitle": "Rezervare anulată",
+    "cancelledBody": "Am anunțat restaurantul."
+  },
   "bookConfirm": {
     "successTitle": "Rezervare confirmată!",
     "successTitlePending": "Rezervare trimisă",

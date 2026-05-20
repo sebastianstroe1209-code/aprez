@@ -106,6 +106,12 @@
     "specialRequestsLabel": "Special requests (optional)",
     "specialRequestsPlaceholder": "Anniversary, food allergies, accessibility needs…"
   },
+  "push": {
+    "actionYes": "Yes, I'll be there",
+    "actionNo": "No, cancel",
+    "cancelledTitle": "Reservation cancelled",
+    "cancelledBody": "We've let the restaurant know."
+  },
   "bookConfirm": {
     "successTitle": "Reservation confirmed!",
     "successTitlePending": "Reservation submitted",
