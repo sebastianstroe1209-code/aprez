@@ -10,6 +10,8 @@ import CalendarNowIndicator from '../../../components/CalendarNowIndicator'
 import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
 import QuickAddReservation from '../../../components/QuickAddReservation'
 import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
+import ServicePeriodFilter from '../../../components/ServicePeriodFilter'
+import { timeInPeriod } from '../../../lib/servicePeriod'
 
 // SPEC §11: dates handled in Europe/Bucharest. en-CA returns YYYY-MM-DD.
 const todayBucharest = () =>
@@ -24,6 +26,10 @@ export default function CalendarPage() {
   const [activeSection, setActiveSection] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Tier H2 (§6.4) — service-period view filter, mirrors the Live page.
+  // servicePeriods fetched once from /profile; selectedPeriodId '' = all.
+  const [servicePeriods, setServicePeriods] = useState([])
+  const [selectedPeriodId, setSelectedPeriodId] = useState('')
 
   // C6 P3-8: ReservationDetailPopup (occupied-cell click) +
   // QuickAddReservation (empty-cell click) both live at page level so
@@ -41,6 +47,14 @@ export default function CalendarPage() {
   useEffect(() => {
     loadData()
   }, [selectedDate, activeSection])
+
+  // Tier H2 (§6.4) — service periods for the view filter. Fetched once;
+  // admin-managed, change rarely. Mirrors the Live page's /profile fetch.
+  useEffect(() => {
+    apiGet('/api/restaurant/profile')
+      .then((p) => setServicePeriods(p?.servicePeriods || []))
+      .catch(() => {})
+  }, [])
 
   // C4 real-time reservation updates (§5a). Surgical merge keyed on id; only
   // reservations matching the currently selected date stay in view.
@@ -118,6 +132,8 @@ export default function CalendarPage() {
   const timeSlots = generateTimeSlots()
   const currentSection = sections.find(s => s.id === activeSection)
   const tables = currentSection?.tables || []
+  // Tier H2 (§6.4) — resolved service-period object; null = "All periods".
+  const selectedPeriod = servicePeriods.find((p) => p.id === selectedPeriodId) || null
 
   const getReservationForTableAndTime = (tableId, time) => {
     return reservations.find(r => {
@@ -202,6 +218,13 @@ export default function CalendarPage() {
             ))}
           </select>
         </div>
+        {/* Tier H2 (§6.4) — service-period view filter. Self-hides when
+            the restaurant has no configured service periods. */}
+        <ServicePeriodFilter
+          periods={servicePeriods}
+          value={selectedPeriodId}
+          onChange={setSelectedPeriodId}
+        />
       </div>
 
       {/* Calendar Grid */}
@@ -234,6 +257,13 @@ export default function CalendarPage() {
                   {tables.map(table => {
                     const res = getReservationForTableAndTime(table.id, time)
                     const isOos = table.status === 'OUT_OF_SERVICE'
+                    // Tier H2 (§6.4) — service-period view filter: the guest
+                    // chip renders only when the reservation's start time is
+                    // inside the selected period. `res` itself still drives
+                    // click routing, so a period-hidden reservation is never
+                    // mistaken for a free slot (matches Live's visual-only
+                    // filter).
+                    const showRes = res && (!selectedPeriod || timeInPeriod(res.time, selectedPeriod))
                     return (
                       <td
                         key={table.id}
@@ -242,7 +272,7 @@ export default function CalendarPage() {
                           isOos && !res ? 'bg-gray-100' : ''
                         }`}
                       >
-                        {res ? (
+                        {showRes ? (
                           <div className="bg-primary text-white text-xs p-2 rounded inline-flex items-center gap-1">
                             <span className="font-medium truncate">
                               {res.guestName || (res.user ? `${res.user.firstName} ${res.user.lastName}` : 'Guest')}

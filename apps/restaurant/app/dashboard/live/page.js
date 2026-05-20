@@ -15,6 +15,7 @@ import SpecialRequestsBadge from '../../../components/ui/SpecialRequestsBadge'
 import MinLateBadge from '../../../components/ui/MinLateBadge'
 import { useToast } from '../../../components/ui/ToastProvider'
 import { computeLiveGridLayout } from '../../../lib/liveGridLayout'
+import { timeInPeriod } from '../../../lib/servicePeriod'
 
 // Statuses that, per memory/waiter_ux_strategy.md §3.7, carry an inline
 // guest+party+time overlay on the floor-plan card. Free + OOS render
@@ -24,24 +25,6 @@ const OVERLAY_STATUSES = new Set(['OCCUPIED', 'ARRIVING_SOON', 'AWAITING_GUEST']
 function truncateGuestName(name) {
   if (!name) return ''
   return name.length > 12 ? name.slice(0, 12) + '…' : name
-}
-
-// Tier G4 (SPEC §6.3) — true iff an "HH:MM" reservation time falls inside
-// a service period's [startTime, endTime). An endTime at or before the
-// start is treated as next-day midnight (24:00) so a cross-midnight
-// window (e.g. 22:00–02:00) still matches.
-function timeInPeriod(timeStr, period) {
-  if (!timeStr || !period) return true
-  const toMin = (s) => {
-    const [h, m] = String(s).slice(0, 5).split(':').map(Number)
-    return h * 60 + m
-  }
-  const start = toMin(period.startTime)
-  let end = toMin(period.endTime)
-  if (end <= start) end += 24 * 60
-  let t = toMin(timeStr)
-  if (t < start) t += 24 * 60
-  return t >= start && t < end
 }
 
 const statusColors = {

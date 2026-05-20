@@ -4,14 +4,22 @@ description: Where we left off; what's pending; quick-resume commands. Update or
 type: project
 ---
 
-**Last session: 2026-05-20. Tier H commit 1 SHIPPED — comment/dead-route cleanup. Commit `chore: H1 — strip §15-marker tombstone comments + delete phase2-demo route`, pushed to origin/main.**
+**Last session: 2026-05-20. Tier H commit 2 SHIPPED — Calendar service-period filter mount. Commit `feat(ui): H2 — Calendar service-period filter mount + timeInPeriod helper extraction`, pushed to origin/main.**
+
+- **`ServicePeriodFilter` mounted on the Calendar** (`apps/restaurant/app/dashboard/calendar/page.js`) as the 3rd control in the Controls row beside Date + Section. Calendar fetches `servicePeriods` once from `/api/restaurant/profile` (mirrors Live), holds `selectedPeriodId` ('' = "All periods", the default). With a period selected, a reservation's guest chip renders only when its start time is inside the period window — **visual-only filter**: `res` still drives cell-click routing so a period-hidden reservation can't be mistaken for a free slot (identical to Live's overlay-suppression).
+- **`timeInPeriod()` extracted** from `live/page.js` into the new shared `apps/restaurant/lib/servicePeriod.js`. Both Live and Calendar now import it — one source of truth (grep-confirmed: exactly one `function timeInPeriod` definition, two import sites). Same one-source precedent G5b set.
+- **Verified:** `timeInPeriod` single-source grep ✓; `/dashboard/calendar` + `/dashboard/live` both render 200; full 15-suite regression battery green (C1 12/12, C6 popup-actions 19/19, C6 live-grid 18/18, c6-assign-table-override-wiring 14/14, g-auto-confirm-picker 11/11, g-prune 5/5, g-restaurant-settings 26/26, g5b-restaurants-filter 32/32, smoke-tierd2/e1/e2/f1/f2/i1/i3 all OK). No backend / schema / test changes — frontend-only.
+
+**Tier H — H3 + H4 await Sebastian's approval.** H3: palette token sweep (status-badge tints → `status-*-bg/-fg` tokens, action-button colors → `action-*` tokens, in `packages/shared/theme/colors.js`; ~40 files across the 3 frontends). **H4 (Sebastian's locked scope):** Calendar §6.4 amendment — past+future view, today→Live redirect, tomorrow default, walk-in rendering on past dates. H3 and H4 are mutually independent, no ordering constraint. (H4 supersedes the earlier "defer vs ship" question on the §6.4 `TableActivity` enrichments — Sebastian chose to ship; it's a real feature, scoped as H4.)
+
+---
+
+**Earlier last session: 2026-05-20. Tier H commit 1 SHIPPED — comment/dead-route cleanup. Commit `chore: H1 — strip §15-marker tombstone comments + delete phase2-demo route`, pushed to origin/main.**
 
 - **Stripped 4 "X removed — SPEC §Y" tombstone comment blocks** (kept through Tiers E/F/G as audit aids, now drained): Phone OTP §3.4 (`auth.routes.js`), Waitlist routes §6.6 (`restaurantPlatform.routes.js`), Analytics §7.4 + Billing §7.5 (`admin.routes.js`). Non-tombstone "moved to lib" pointer notes from G5b/G6 (e.g. the `computeMergeSuggestions` relocation note in restaurantPlatform.routes.js) were deliberately KEPT — not targets.
 - **Deleted `apps/restaurant/app/dashboard/phase2-demo/page.js`** — the Tier C6 Phase-2 standalone-verify harness route, never linked from any sidebar/router. Confirmed zero incoming imports/links. Reworded the one stale code comment in `QuickAddReservation.jsx` that named the demo route, and the SPEC C6-Phase-2 narrative line that referenced it. (4 dated historical mentions of `phase2-demo` remain in this file's older C6-era handoff log — left intact as accurate history; rewriting past session records would be dishonest.)
 - **bg-sidebar comment tidy** in `packages/shared/theme/colors.js` — clarified that `sidebar` IS the canonical token (the old comment's "no semantic equivalent" / "still use" wording wrongly implied a pending migration; Cluster D of the H audit is effectively closed).
 - **Verified:** all 3 route `.js` files compile; restaurant + admin `/dashboard/*` build clean; mobile bundle clean. Pure-JS smokes green — C1 dispatcher 12/12, C6 popup-actions 19/19, C6 live-grid-layout 18/18, c6-assign-table-override-wiring 14/14. No schema / backend-behavior / test changes — pure cleanup.
-
-**Tier H — H2 + H3 await Sebastian's approval.** H2: Calendar service-period filter mount (`ServicePeriodFilter` already built in G4; ~30 lines in `calendar/page.js` + a ~15-line `timeInPeriod` extraction to a shared restaurant-app helper so Live + Calendar don't drift). H3: palette token sweep (status-badge tints → `status-*-bg/-fg` tokens, action-button colors → `action-*` tokens, in `packages/shared/theme/colors.js`; ~40 files across the 3 frontends). All three H commits are mutually independent. Sebastian is separately deciding **§6.4 Calendar `TableActivity` enrichments (walk-ins / occupation segments / OOS blocks) — defer vs ship** before Tier J planning; that is real feature work, NOT polish, so it is outside the H1/H2/H3 scope.
 
 ---
 
