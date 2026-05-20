@@ -109,6 +109,10 @@
   "push": {
     "actionYes": "Yes, I'll be there",
     "actionNo": "No, cancel",
+    "confirmCancelTitle": "Cancel reservation?",
+    "confirmCancelBody": "Are you sure you want to cancel? This action cannot be undone.",
+    "confirmCancelConfirm": "Yes, cancel",
+    "confirmCancelKeep": "Keep",
     "cancelledTitle": "Reservation cancelled",
     "cancelledBody": "We've let the restaurant know."
   },

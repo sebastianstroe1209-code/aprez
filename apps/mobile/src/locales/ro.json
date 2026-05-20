@@ -109,6 +109,10 @@
   "push": {
     "actionYes": "Da, voi veni",
     "actionNo": "Nu, anulează",
+    "confirmCancelTitle": "Anulezi rezervarea?",
+    "confirmCancelBody": "Ești sigur că vrei să anulezi? Această acțiune nu poate fi anulată.",
+    "confirmCancelConfirm": "Da, anulează",
+    "confirmCancelKeep": "Păstrează",
     "cancelledTitle": "Rezervare anulată",
     "cancelledBody": "Am anunțat restaurantul."
   },

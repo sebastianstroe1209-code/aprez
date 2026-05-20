@@ -53,9 +53,19 @@ api.interceptors.response.use(
 
 export default api;
 
-// Helper to get user-friendly error messages
+// Helper to get user-friendly error messages.
+// Backend's error envelope is `{ error: { message: '...', code?, ... } }` —
+// an OBJECT, not a string. Pre-fix this returned the object directly and
+// any `<Text>{error}</Text>` consumer crashed RN with "Objects are not
+// valid as a React child". Always coerce to a string before returning.
 export function getErrorMessage(error) {
-  if (error.response?.data?.error) return error.response.data.error;
+  const e = error.response?.data?.error;
+  if (e) {
+    if (typeof e === 'string') return e;
+    if (e.message && typeof e.message === 'string') return e.message;
+    if (e.code && typeof e.code === 'string') return e.code;
+    return 'Something went wrong';
+  }
   if (error.response?.data?.errors) {
     return error.response.data.errors.map((e) => e.msg || e.message).join(', ');
   }
