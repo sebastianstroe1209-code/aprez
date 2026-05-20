@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { apiGet } from '../../../lib/api'
 import { subscribe } from '../../../lib/socket'
@@ -17,15 +18,39 @@ import { timeInPeriod } from '../../../lib/servicePeriod'
 const todayBucharest = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' })
 
+// Tier H4 (§6.4) — the Calendar's default date is tomorrow (today belongs
+// to the Live floor plan). Treats the Bucharest calendar date as a plain
+// date and advances one day.
+const tomorrowBucharest = () => {
+  const d = new Date(`${todayBucharest()}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 export default function CalendarPage() {
   const t = useTranslations()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { show: showToast } = useToast()
-  const [selectedDate, setSelectedDate] = useState(todayBucharest())
+  // Tier H4 (§6.4) — Calendar is the past+future planning view; today is
+  // owned by Live. Default date is tomorrow; an explicit ?date= URL param
+  // (shareable link, QuickAdd's date-prefill flow) still wins.
+  const [selectedDate, setSelectedDate] = useState(
+    () => searchParams.get('date') || tomorrowBucharest()
+  )
   const [sections, setSections] = useState([])
   const [reservations, setReservations] = useState([])
+  // Tier H4 — read-only walk-in segments; fetched for past dates only.
+  const [walkIns, setWalkIns] = useState([])
   const [activeSection, setActiveSection] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // Tier H4 (§6.4) — date-relative mode. `isToday` bounces to Live;
+  // `isPast` enables walk-in segments and makes empty cells inert.
+  const todayStr = todayBucharest()
+  const isToday = selectedDate === todayStr
+  const isPast = selectedDate < todayStr
   // Tier H2 (§6.4) — service-period view filter, mirrors the Live page.
   // servicePeriods fetched once from /profile; selectedPeriodId '' = all.
   const [servicePeriods, setServicePeriods] = useState([])
@@ -47,6 +72,13 @@ export default function CalendarPage() {
   useEffect(() => {
     loadData()
   }, [selectedDate, activeSection])
+
+  // Tier H4 (§6.4) — today is Live's domain: bounce there immediately.
+  // `replace` (not push) so the browser Back button can't land back on
+  // Calendar-today and re-trigger this redirect in a loop.
+  useEffect(() => {
+    if (isToday) router.replace('/dashboard/live')
+  }, [isToday, router])
 
   // Tier H2 (§6.4) — service periods for the view filter. Fetched once;
   // admin-managed, change rarely. Mirrors the Live page's /profile fetch.
@@ -100,17 +132,27 @@ export default function CalendarPage() {
   // mid-click. Initial-mount calls leave quiet=false so the "Loading…"
   // placeholder still shows on first paint.
   const loadData = async (quiet = false) => {
+    // Tier H4 — skip the fetch entirely on today; the page is redirecting
+    // to Live and renders nothing here.
+    if (isToday) return
     try {
       if (!quiet) setLoading(true)
-      const [layoutData, resData] = await Promise.all([
+      const [layoutData, resData, walkInData] = await Promise.all([
         apiGet('/api/restaurant/layout'),
         apiGet(`/api/restaurant/reservations?date=${selectedDate}`),
+        // Tier H4 — walk-ins exist only for past dates. Non-fatal: a
+        // failure here leaves walk-ins empty rather than blanking the
+        // whole calendar over secondary, already-settled data.
+        isPast
+          ? apiGet(`/api/restaurant/walk-ins?date=${selectedDate}`).catch(() => [])
+          : Promise.resolve([]),
       ])
       setSections(layoutData)
       if (layoutData.length > 0 && !activeSection) {
         setActiveSection(layoutData[0].id)
       }
       setReservations(resData)
+      setWalkIns(walkInData)
     } catch (err) {
       setError(err.message || 'Failed to load calendar')
     } finally {
@@ -145,6 +187,33 @@ export default function CalendarPage() {
     })
   }
 
+  // Tier H4 (§6.4) — walk-in segments. Each walk-in's Bucharest
+  // minute-of-day range is precomputed once; a cell is "covered" when the
+  // walk-in overlaps that 15-minute slot. `isStart` marks the slot that
+  // contains startedAt so only that cell carries the label.
+  const walkInRanges = walkIns.map((w) => {
+    const toMin = (ts) => {
+      const hm = new Date(ts).toLocaleTimeString('en-GB', {
+        timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hour12: false,
+      })
+      const [h, m] = hm.split(':').map(Number)
+      return h * 60 + m
+    }
+    const startMin = toMin(w.startedAt)
+    return { ...w, startMin, endMin: w.endedAt ? toMin(w.endedAt) : startMin + 1 }
+  })
+  const getWalkInForCell = (tableId, slotTime) => {
+    const [h, m] = slotTime.split(':').map(Number)
+    const slotMin = h * 60 + m
+    for (const w of walkInRanges) {
+      if (w.tableId !== tableId) continue
+      if (w.startMin < slotMin + 15 && w.endMin > slotMin) {
+        return { walkIn: w, isStart: Math.floor(w.startMin / 15) * 15 === slotMin }
+      }
+    }
+    return null
+  }
+
   // C6 P3-8 click router per §3.10 part b:
   //   - existing reservation → open ReservationDetailPopup
   //   - OUT_OF_SERVICE table → toast warning, no Quick Add
@@ -163,6 +232,10 @@ export default function CalendarPage() {
       setPopupOpen(true)
       return
     }
+    // Tier H4 — you can't book in the past; empty past-date cells are
+    // inert (no QuickAdd, no toast). Reservation cells above still open
+    // the popup so staff can inspect a settled booking.
+    if (isPast) return
     if (table.status === 'OUT_OF_SERVICE') {
       showToast(t('calendar.tableOutOfServiceToast'), {
         variant: 'warning',
@@ -179,6 +252,9 @@ export default function CalendarPage() {
     setQuickAddOpen(true)
   }
 
+  // Tier H4 — render nothing while the today→Live redirect resolves, so
+  // there is no calendar-grid flash before the navigation completes.
+  if (isToday) return null
   if (loading) {
     return <div className="text-center py-12">Loading calendar...</div>
   }
@@ -264,13 +340,20 @@ export default function CalendarPage() {
                     // mistaken for a free slot (matches Live's visual-only
                     // filter).
                     const showRes = res && (!selectedPeriod || timeInPeriod(res.time, selectedPeriod))
+                    // Tier H4 — read-only walk-in segment (past dates only),
+                    // shown when the cell carries no reservation chip.
+                    const walkInCell = (!showRes && isPast) ? getWalkInForCell(table.id, time) : null
+                    // Clickable when the cell has a reservation (popup) or
+                    // the date is future (empty → QuickAdd). Past empty and
+                    // walk-in cells are inert.
+                    const clickable = !!res || !isPast
                     return (
                       <td
                         key={table.id}
                         onClick={() => handleCellClick(table, time, res)}
-                        className={`px-2 py-3 border-r text-center cursor-pointer ${
-                          isOos && !res ? 'bg-gray-100' : ''
-                        }`}
+                        className={`px-2 py-3 border-r text-center ${
+                          clickable ? 'cursor-pointer' : 'cursor-default'
+                        } ${isOos && !res ? 'bg-gray-100' : ''}`}
                       >
                         {showRes ? (
                           <div className="bg-primary text-white text-xs p-2 rounded inline-flex items-center gap-1">
@@ -295,6 +378,18 @@ export default function CalendarPage() {
                               >
                                 +{res.mergeBinding.otherMemberLabels.join('+')}
                               </span>
+                            )}
+                          </div>
+                        ) : walkInCell ? (
+                          <div className="bg-amber-100 border border-amber-300 text-amber-900 text-xs p-1.5 rounded inline-flex items-center justify-center gap-1">
+                            {walkInCell.isStart ? (
+                              <span className="font-medium truncate">
+                                {walkInCell.walkIn.walkInName
+                                  ? t('calendar.walkInNamed', { name: walkInCell.walkIn.walkInName, count: walkInCell.walkIn.partySize })
+                                  : t('calendar.walkInAnon', { count: walkInCell.walkIn.partySize })}
+                              </span>
+                            ) : (
+                              <span className="opacity-40" aria-hidden="true">·</span>
                             )}
                           </div>
                         ) : null}

@@ -235,6 +235,70 @@ router.get(
   }
 );
 
+// GET /walk-ins?date=YYYY-MM-DD — walk-in TableActivity rows for a PAST
+// date, for the Calendar's past+future planning view (SPEC §6.4).
+// Tier H commit 4. Walk-ins only exist for dates that have already
+// happened: today belongs to the Live floor plan and future dates have
+// no walk-ins, so for any date >= today (Europe/Bucharest) this returns
+// []. Restaurant-scoped via the JWT; not section-filtered (the Calendar
+// renders only the active section's tables client-side, exactly as it
+// does for reservations). The Calendar draws each row as a read-only
+// amber segment spanning [startedAt, endedAt].
+router.get(
+  '/walk-ins',
+  authenticateRestaurant,
+  [query('date').isISO8601()],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const prisma = req.app.get('prisma');
+      const restaurantId = req.user.restaurantId;
+      const { date } = req.query;
+
+      // Past-only. String compare is chronological for YYYY-MM-DD.
+      const todayBucharest = new Date().toLocaleDateString('en-CA', {
+        timeZone: 'Europe/Bucharest',
+      });
+      if (date >= todayBucharest) {
+        return res.json([]);
+      }
+
+      // TableActivity.date is @db.Date, stamped with the Bucharest
+      // calendar date at seat time — an exact-day window is enough.
+      const dayStart = new Date(`${date}T00:00:00.000Z`);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+      const rows = await prisma.tableActivity.findMany({
+        where: {
+          restaurantId,
+          kind: 'WALK_IN',
+          date: { gte: dayStart, lt: dayEnd },
+        },
+        select: {
+          id: true, tableId: true, partySize: true,
+          startedAt: true, endedAt: true, notes: true,
+        },
+        orderBy: { startedAt: 'asc' },
+      });
+
+      // walkInName lives in TableActivity.notes (set at seat time).
+      res.json(
+        rows.map((r) => ({
+          id: r.id,
+          tableId: r.tableId,
+          partySize: r.partySize,
+          startedAt: r.startedAt,
+          endedAt: r.endedAt,
+          walkInName: r.notes || null,
+        }))
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // GET /reservations/pending - Get pending reservations
 router.get('/reservations/pending', authenticateRestaurant, async (req, res, next) => {
   try {

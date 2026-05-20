@@ -213,7 +213,9 @@
   },
   "calendar": {
     "nowIndicator": "Now",
-    "tableOutOfServiceToast": "Table is out of service"
+    "tableOutOfServiceToast": "Table is out of service",
+    "walkInNamed": "{name} × {count}",
+    "walkInAnon": "Walk-in × {count}"
   },
   "dashboard": {
     "title": "Dashboard",

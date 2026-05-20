@@ -213,7 +213,9 @@
   },
   "calendar": {
     "nowIndicator": "Acum",
-    "tableOutOfServiceToast": "Masa nu este disponibilă"
+    "tableOutOfServiceToast": "Masa nu este disponibilă",
+    "walkInNamed": "{name} × {count}",
+    "walkInAnon": "Walk-in × {count}"
   },
   "dashboard": {
     "title": "Panou",
