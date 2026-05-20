@@ -11,7 +11,7 @@ import { DEV_API_HOST } from './devHost';
 // api.js, so the two never drift).
 const SOCKET_URL = __DEV__
   ? DEV_API_HOST
-  : 'https://api.aprez.ro';
+  : 'https://aprez-server.onrender.com';
 
 let socket = null;
 const statusListeners = new Set();
