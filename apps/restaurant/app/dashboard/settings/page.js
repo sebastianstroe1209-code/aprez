@@ -194,13 +194,13 @@ export default function SettingsPage() {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="mb-6 p-4 bg-alert-error-bg border border-alert-error-border text-alert-error-fg rounded">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+        <div className="mb-6 p-4 bg-alert-success-bg border border-alert-success-border text-alert-success-fg rounded">
           {success}
         </div>
       )}
@@ -379,7 +379,7 @@ export default function SettingsPage() {
           <h2 className="text-2xl font-bold">Banned Users</h2>
           <button
             onClick={() => setShowBanModal(true)}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            className="px-4 py-2 bg-action-danger text-white rounded hover:bg-action-danger-hover transition-colors"
           >
             Ban User
           </button>
@@ -452,7 +452,7 @@ export default function SettingsPage() {
                 <div className="flex gap-2 pt-4">
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                    className="flex-1 px-4 py-2 bg-action-danger text-white rounded hover:bg-action-danger-hover"
                   >
                     Ban User
                   </button>

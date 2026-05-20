@@ -37,7 +37,7 @@ export default function ReconnectingBanner() {
   // tablet/desktop. Keeps the banner centered over the content area at all
   // three §4.5 breakpoints (375 / 768 / 1440).
   return (
-    <div className="fixed top-0 left-0 md:left-64 right-0 z-50 bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2 text-sm font-medium text-center">
+    <div className="fixed top-0 left-0 md:left-64 right-0 z-50 bg-alert-warning-bg border-b border-alert-warning-border text-alert-warning-fg px-4 py-2 text-sm font-medium text-center">
       {t('common.reconnecting')}
     </div>
   )

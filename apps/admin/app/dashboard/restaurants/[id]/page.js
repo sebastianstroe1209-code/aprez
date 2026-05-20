@@ -280,7 +280,7 @@ export default function EditRestaurantPage() {
         <div className="space-y-2">
           <button
             onClick={() => router.push(`/dashboard/restaurants/${id}/layout-editor`)}
-            className="block w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+            className="block w-full bg-action-info text-white px-4 py-2 rounded hover:bg-action-info-hover transition-colors"
           >
             Edit Layout
           </button>
@@ -295,8 +295,8 @@ export default function EditRestaurantPage() {
             onClick={toggleStatus}
             className={`block w-full text-white px-4 py-2 rounded transition-colors ${
               form.isActive
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-green-600 hover:bg-green-700'
+                ? 'bg-action-danger hover:bg-action-danger-hover'
+                : 'bg-action-success hover:bg-action-success-hover'
             }`}
           >
             {form.isActive ? 'Deactivate' : 'Activate'}
@@ -305,7 +305,7 @@ export default function EditRestaurantPage() {
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="mb-4 p-4 bg-alert-error-bg border border-alert-error-border text-alert-error-fg rounded">
           Error: {error}
         </div>
       )}
@@ -523,7 +523,7 @@ export default function EditRestaurantPage() {
                     <button
                       type="button"
                       onClick={() => removeServicePeriod(idx)}
-                      className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                      className="bg-action-danger text-white px-3 py-1 rounded text-sm hover:bg-action-danger-hover"
                     >
                       Remove
                     </button>

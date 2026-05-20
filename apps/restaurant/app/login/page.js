@@ -47,7 +47,7 @@ export default function LoginPage() {
         <h1 className="text-3xl font-bold text-center mb-8">{t('login.title')}</h1>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+          <div className="mb-4 p-3 bg-alert-error-bg border border-alert-error-border text-alert-error-fg rounded">
             {error}
           </div>
         )}

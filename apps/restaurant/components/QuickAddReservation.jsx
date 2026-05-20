@@ -438,7 +438,7 @@ export default function QuickAddReservation({ isOpen, onClose, prefill, onSaveSu
                 <button
                   type="button"
                   onClick={() => setClosedHoursAck(true)}
-                  className="px-3 py-2 rounded bg-amber-600 text-white text-sm font-semibold min-h-[40px]"
+                  className="px-3 py-2 rounded bg-action-warning text-white text-sm font-semibold min-h-[40px]"
                 >
                   {t('common.yes')}
                 </button>

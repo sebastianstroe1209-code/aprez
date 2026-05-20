@@ -27,7 +27,7 @@ export default function ReconnectingBanner() {
 
   if (!show) return null
   return (
-    <div className="fixed top-0 left-64 right-0 z-50 bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2 text-sm font-medium text-center">
+    <div className="fixed top-0 left-64 right-0 z-50 bg-alert-warning-bg border-b border-alert-warning-border text-alert-warning-fg px-4 py-2 text-sm font-medium text-center">
       {t('common.reconnecting')}
     </div>
   )

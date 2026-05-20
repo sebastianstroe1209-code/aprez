@@ -45,6 +45,15 @@ const Colors = {
   completed: '#6b7280',
   noShow: '#ef4444',
 
+  // Feedback-banner tints (mobile) — Tier H3. The amber rejected-
+  // modification + reconnect banners in the diner reservation screens
+  // previously carried these as inline hex. The slate "completed"
+  // status background reuses `borderLight` (#f1f5f9) — no new token.
+  warnTint: '#fef3c7',           // amber-100 — banner background
+  warnTintBorder: '#fcd34d',     // amber-300 — modification-rejected card border
+  warnTintBorderSoft: '#fde68a', // amber-200 — reconnect banner border
+  warnTintText: '#78350f',       // amber-900 — banner text
+
   shadow: 'rgba(0, 0, 0, 0.08)',
 };
 
@@ -87,6 +96,36 @@ const tailwindColors = {
   'res-cancelled': Colors.cancelled,
   'res-completed': Colors.completed,
   'res-noshow': Colors.noShow,
+
+  // Status badge tints (Tier H3) — bg + fg pairs for reservation /
+  // table status badges. Centralizes the bg-{c}-100 / text-{c}-{n}
+  // pairs previously scattered across NextZone's STATUS_TONE map,
+  // the Reservations page's statusBadgeColor map, and inline status
+  // chips (ReservationDetailPopup, admin team / restaurants).
+  'status-pending-bg': '#fef9c3',   'status-pending-fg': '#854d0e',
+  'status-confirmed-bg': '#dcfce7', 'status-confirmed-fg': '#166534',
+  'status-awaiting-bg': '#fce7f3',  'status-awaiting-fg': '#831843',
+  'status-occupied-bg': '#fee2e2',  'status-occupied-fg': '#7f1d1d',
+  'status-cancelled-bg': '#fee2e2', 'status-cancelled-fg': '#991b1b',
+  'status-noshow-bg': '#ffedd5',    'status-noshow-fg': '#9a3412',
+  'status-neutral-bg': '#f3f4f6',   'status-neutral-fg': '#374151',
+  'status-info-bg': '#dbeafe',      'status-info-fg': '#1e40af',
+
+  // Feedback-banner tints (Tier H3) — bg / border / fg trios for the
+  // inline alert banners. The error/warning/info tokens above are
+  // accent colors (red-500 etc.); these are the lighter banner tints
+  // (the red-100 / red-400 / red-700 family) and intentionally distinct.
+  'alert-error-bg': '#fee2e2',   'alert-error-border': '#f87171',   'alert-error-fg': '#b91c1c',
+  'alert-success-bg': '#dcfce7', 'alert-success-border': '#4ade80', 'alert-success-fg': '#15803d',
+  'alert-warning-bg': '#fef3c7', 'alert-warning-border': '#fcd34d', 'alert-warning-fg': '#78350f',
+
+  // Action button colors (Tier H3) — solid fill + hover for the
+  // semantic action buttons. `confirm` / `pickTable` keep the brand
+  // `primary` / `primary-dark` tokens above (already tokenized).
+  'action-danger': '#dc2626',  'action-danger-hover': '#b91c1c',
+  'action-info': '#2563eb',    'action-info-hover': '#1d4ed8',
+  'action-success': '#16a34a', 'action-success-hover': '#15803d',
+  'action-warning': '#d97706', 'action-warning-hover': '#b45309',
 
   // Sidebar — dark navy nav-bar background, consumed by both Next apps
   // via the `bg-sidebar` class. Deliberately outside the brand/status

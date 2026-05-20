@@ -56,7 +56,7 @@ export default function RestaurantsPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="p-4 bg-alert-error-bg border border-alert-error-border text-alert-error-fg rounded">
           Error: {error}
         </div>
       )}
@@ -100,8 +100,8 @@ export default function RestaurantsPage() {
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-medium ${
                         restaurant.isActive
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                          ? 'bg-status-confirmed-bg text-status-confirmed-fg'
+                          : 'bg-status-cancelled-bg text-status-cancelled-fg'
                       }`}
                     >
                       {restaurant.isActive ? 'Active' : 'Inactive'}

@@ -546,7 +546,7 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
                     <button
                       type="button"
                       onClick={() => { setClosedHoursAck(true); setClosedHoursDismissed(true) }}
-                      className="px-3 py-2 rounded bg-amber-600 text-white text-sm font-semibold min-h-[40px]"
+                      className="px-3 py-2 rounded bg-action-warning text-white text-sm font-semibold min-h-[40px]"
                     >
                       {t('common.yes')}
                     </button>
@@ -595,7 +595,7 @@ export default function ReservationDetailPopup({ reservation, isOpen, onClose, o
               {/* Status + late badge */}
               <div className="flex items-center gap-2 mb-4 flex-wrap">
                 {statusKey && (
-                  <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                  <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-status-neutral-bg text-status-neutral-fg">
                     {t(statusKey)}
                   </span>
                 )}

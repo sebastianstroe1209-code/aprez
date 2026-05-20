@@ -12,16 +12,16 @@ import { apiGet } from '../../lib/api'
 import SpecialRequestsBadge from '../ui/SpecialRequestsBadge'
 
 const STATUS_TONE = {
-  PENDING:        'bg-yellow-100 text-yellow-800',
-  CONFIRMED:      'bg-green-100  text-green-800',
-  AUTO_CONFIRMED: 'bg-green-100  text-green-800',
-  AWAITING_GUEST: 'bg-pink-100   text-pink-900',
-  OCCUPIED:       'bg-red-100    text-red-900',
+  PENDING:        'bg-status-pending-bg text-status-pending-fg',
+  CONFIRMED:      'bg-status-confirmed-bg text-status-confirmed-fg',
+  AUTO_CONFIRMED: 'bg-status-confirmed-bg text-status-confirmed-fg',
+  AWAITING_GUEST: 'bg-status-awaiting-bg text-status-awaiting-fg',
+  OCCUPIED:       'bg-status-occupied-bg text-status-occupied-fg',
 }
 
 function StatusBadge({ status }) {
   const t = useTranslations()
-  const tone = STATUS_TONE[status] || 'bg-gray-100 text-gray-700'
+  const tone = STATUS_TONE[status] || 'bg-status-neutral-bg text-status-neutral-fg'
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${tone}`}>
       {t(`statusLabel.${status}`)}

@@ -84,7 +84,7 @@ export default function TeamPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="p-4 bg-alert-error-bg border border-alert-error-border text-alert-error-fg rounded">
           Error: {error}
         </div>
       )}
@@ -170,7 +170,7 @@ export default function TeamPage() {
                   <td className="px-6 py-4 text-sm text-gray-800 font-medium">{member.name}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{member.email}</td>
                   <td className="px-6 py-4">
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-status-info-bg text-status-info-fg">
                       {member.role || 'Admin'}
                     </span>
                   </td>

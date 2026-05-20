@@ -34,7 +34,7 @@ const STATUS_CONFIG = {
   CONFIRMED: { color: Colors.confirmed, bg: Colors.primaryBg, icon: 'checkmark-circle-outline' },
   AUTO_CONFIRMED: { color: Colors.confirmed, bg: Colors.primaryBg, icon: 'checkmark-circle-outline' },
   CANCELLED: { color: Colors.error, bg: Colors.errorBg, icon: 'close-circle-outline' },
-  COMPLETED: { color: Colors.completed, bg: '#f1f5f9', icon: 'checkmark-done-outline' },
+  COMPLETED: { color: Colors.completed, bg: Colors.borderLight, icon: 'checkmark-done-outline' },
   NO_SHOW: { color: Colors.error, bg: Colors.errorBg, icon: 'alert-circle-outline' },
   MODIFICATION_PENDING: { color: Colors.warning, bg: Colors.warningBg, icon: 'create-outline' },
 };
@@ -355,17 +355,17 @@ const styles = StyleSheet.create({
   },
   statusBadgeText: { fontSize: 13, fontWeight: '700' },
   rejectBanner: {
-    backgroundColor: '#fef3c7', borderColor: '#fcd34d', borderWidth: 1,
+    backgroundColor: Colors.warnTint, borderColor: Colors.warnTintBorder, borderWidth: 1,
     borderRadius: 12, padding: 14, marginBottom: 16,
   },
-  rejectTitle: { fontSize: 15, fontWeight: '700', color: '#78350f', marginBottom: 2 },
-  rejectSub: { fontSize: 14, color: '#78350f', marginBottom: 10 },
+  rejectTitle: { fontSize: 15, fontWeight: '700', color: Colors.warnTintText, marginBottom: 2 },
+  rejectSub: { fontSize: 14, color: Colors.warnTintText, marginBottom: 10 },
   rejectBtnRow: { flexDirection: 'row', gap: 10 },
   keepBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#78350f',
+    flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: Colors.warnTintText,
     backgroundColor: '#fff', alignItems: 'center',
   },
-  keepBtnText: { color: '#78350f', fontWeight: '700', fontSize: 14 },
+  keepBtnText: { color: Colors.warnTintText, fontWeight: '700', fontSize: 14 },
   rejectCancelBtn: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
     backgroundColor: Colors.error, alignItems: 'center',

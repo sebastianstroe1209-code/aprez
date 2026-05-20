@@ -264,7 +264,7 @@ export default function CalendarPage() {
       <h1 className="text-3xl font-bold mb-6">Calendar View</h1>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="mb-6 p-4 bg-alert-error-bg border border-alert-error-border text-alert-error-fg rounded">
           {error}
         </div>
       )}

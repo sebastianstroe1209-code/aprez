@@ -174,7 +174,7 @@ export default function PhotosSection({ initialPhotos = [], onChange }) {
                   type="button"
                   onClick={() => handleDelete(p.id)}
                   disabled={working === p.id}
-                  className="w-full text-xs bg-red-600 text-white font-medium py-1.5 rounded hover:bg-red-700 disabled:opacity-50"
+                  className="w-full text-xs bg-action-danger text-white font-medium py-1.5 rounded hover:bg-action-danger-hover disabled:opacity-50"
                 >
                   ✕ {t('deleteButton')}
                 </button>

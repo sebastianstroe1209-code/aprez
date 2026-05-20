@@ -65,7 +65,7 @@ export default function DashboardPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="p-4 bg-alert-error-bg border border-alert-error-border text-alert-error-fg rounded">
           Error: {error}
         </div>
       )}

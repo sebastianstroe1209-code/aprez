@@ -74,7 +74,7 @@ export default function DashboardLayout({ children }) {
         <div className="mt-8 pt-8 border-t border-gray-700">
           <button
             onClick={handleLogout}
-            className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors text-sm font-medium"
+            className="w-full px-4 py-2 bg-action-danger hover:bg-action-danger-hover rounded-lg transition-colors text-sm font-medium"
           >
             {t('common.logout')}
           </button>

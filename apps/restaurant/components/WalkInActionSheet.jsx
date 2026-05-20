@@ -156,7 +156,7 @@ export default function WalkInActionSheet({
                 <button
                   type="button"
                   onClick={() => setArrivingAcked(true)}
-                  className="flex-1 px-4 py-3 rounded bg-amber-600 text-white font-semibold min-h-[48px]"
+                  className="flex-1 px-4 py-3 rounded bg-action-warning text-white font-semibold min-h-[48px]"
                 >
                   {t('common.yes')}
                 </button>
@@ -201,8 +201,8 @@ export default function WalkInActionSheet({
                       onClick={() => setCapacityAcked(true)}
                       className={`px-3 py-1.5 rounded text-sm font-semibold min-h-[36px] ${
                         capacityAcked
-                          ? 'bg-amber-700 text-white'
-                          : 'bg-amber-600 hover:bg-amber-700 text-white'
+                          ? 'bg-action-warning-hover text-white'
+                          : 'bg-action-warning hover:bg-action-warning-hover text-white'
                       }`}
                     >
                       {t('common.yes')}

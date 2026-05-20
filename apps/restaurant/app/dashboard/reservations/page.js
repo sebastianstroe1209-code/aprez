@@ -13,12 +13,12 @@ import MinLateBadge from '../../../components/ui/MinLateBadge'
 import ReservationDetailPopup from '../../../components/ReservationDetailPopup'
 
 const statusBadgeColor = {
-  PENDING: 'bg-yellow-100 text-yellow-800',
-  CONFIRMED: 'bg-green-100 text-green-800',
-  AUTO_CONFIRMED: 'bg-green-100 text-green-800',
-  CANCELLED: 'bg-red-100 text-red-800',
-  COMPLETED: 'bg-gray-100 text-gray-800',
-  NO_SHOW: 'bg-orange-100 text-orange-800',
+  PENDING: 'bg-status-pending-bg text-status-pending-fg',
+  CONFIRMED: 'bg-status-confirmed-bg text-status-confirmed-fg',
+  AUTO_CONFIRMED: 'bg-status-confirmed-bg text-status-confirmed-fg',
+  CANCELLED: 'bg-status-cancelled-bg text-status-cancelled-fg',
+  COMPLETED: 'bg-status-neutral-bg text-status-neutral-fg',
+  NO_SHOW: 'bg-status-noshow-bg text-status-noshow-fg',
 }
 
 // Tier E commit 1 — build the short "Wants: …" summary that renders
@@ -341,7 +341,7 @@ export default function ReservationsPage() {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="mb-6 p-4 bg-alert-error-bg border border-alert-error-border text-alert-error-fg rounded">
           {error}
         </div>
       )}
@@ -443,11 +443,11 @@ export default function ReservationsPage() {
                     <td className="px-6 py-4 text-sm">{res.partySize}</td>
                     <td className="px-6 py-4 text-sm">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`px-3 py-1 rounded text-xs font-medium ${statusBadgeColor[res.status] || 'bg-gray-100'}`}>
+                        <span className={`px-3 py-1 rounded text-xs font-medium ${statusBadgeColor[res.status] || 'bg-status-neutral-bg text-status-neutral-fg'}`}>
                           {res.status.replace(/_/g, ' ')}
                         </span>
                         {res.seatedAt && (res.status === 'CONFIRMED' || res.status === 'AUTO_CONFIRMED') && (
-                          <span className="px-3 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          <span className="px-3 py-1 rounded text-xs font-medium bg-status-info-bg text-status-info-fg">
                             Seated
                           </span>
                         )}
@@ -487,7 +487,7 @@ export default function ReservationsPage() {
                           </button>
                           <button
                             onClick={() => handleReject(res.id)}
-                            className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                            className="text-xs px-2 py-1 bg-action-danger text-white rounded hover:bg-action-danger-hover"
                           >
                             Reject
                           </button>
@@ -506,7 +506,7 @@ export default function ReservationsPage() {
                           {res.tableId && (
                             <button
                               onClick={() => handleSeat(res.id)}
-                              className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                              className="text-xs px-2 py-1 bg-action-info text-white rounded hover:bg-action-info-hover"
                             >
                               Seat
                             </button>

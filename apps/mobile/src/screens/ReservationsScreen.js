@@ -23,7 +23,7 @@ const STATUS_CONFIG = {
   CONFIRMED: { color: Colors.confirmed, bg: Colors.primaryBg, label: 'Confirmed', icon: 'checkmark-circle-outline' },
   AUTO_CONFIRMED: { color: Colors.confirmed, bg: Colors.primaryBg, label: 'Confirmed', icon: 'checkmark-circle-outline' },
   CANCELLED: { color: Colors.error, bg: Colors.errorBg, label: 'Cancelled', icon: 'close-circle-outline' },
-  COMPLETED: { color: Colors.completed, bg: '#f1f5f9', label: 'Completed', icon: 'checkmark-done-outline' },
+  COMPLETED: { color: Colors.completed, bg: Colors.borderLight, label: 'Completed', icon: 'checkmark-done-outline' },
   NO_SHOW: { color: Colors.error, bg: Colors.errorBg, label: 'No Show', icon: 'alert-circle-outline' },
   MODIFICATION_PENDING: { color: Colors.warning, bg: Colors.warningBg, label: 'Modification Pending', icon: 'create-outline' },
 };
@@ -212,7 +212,7 @@ export default function ReservationsScreen({ navigation }) {
                 disabled={!!ackWorking}
               >
                 {ackWorking === ackKeepTag ? (
-                  <ActivityIndicator size="small" color="#78350f" />
+                  <ActivityIndicator size="small" color={Colors.warnTintText} />
                 ) : (
                   <Text style={styles.rejectKeepText}>{t('modRejected.keepButton')}</Text>
                 )}
@@ -328,8 +328,8 @@ export default function ReservationsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  reconnectBanner: { backgroundColor: '#fef3c7', borderBottomWidth: 1, borderBottomColor: '#fde68a', paddingVertical: 6, alignItems: 'center' },
-  reconnectBannerText: { color: '#78350f', fontSize: 13, fontWeight: '600' },
+  reconnectBanner: { backgroundColor: Colors.warnTint, borderBottomWidth: 1, borderBottomColor: Colors.warnTintBorderSoft, paddingVertical: 6, alignItems: 'center' },
+  reconnectBannerText: { color: Colors.warnTintText, fontSize: 13, fontWeight: '600' },
   header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
   title: { fontSize: 28, fontWeight: '800', color: Colors.text },
   tabs: {
@@ -379,17 +379,17 @@ const styles = StyleSheet.create({
   // match the restaurant popup's modification callout.
   rejectBanner: {
     marginTop: 8, marginHorizontal: 0,
-    backgroundColor: '#fef3c7', borderColor: '#fcd34d', borderWidth: 1,
+    backgroundColor: Colors.warnTint, borderColor: Colors.warnTintBorder, borderWidth: 1,
     borderRadius: 10, padding: 12,
   },
-  rejectTitle: { fontSize: 14, fontWeight: '700', color: '#78350f' },
-  rejectSub: { fontSize: 13, color: '#78350f', marginTop: 2, marginBottom: 10 },
+  rejectTitle: { fontSize: 14, fontWeight: '700', color: Colors.warnTintText },
+  rejectSub: { fontSize: 13, color: Colors.warnTintText, marginTop: 2, marginBottom: 10 },
   rejectBtnRow: { flexDirection: 'row', gap: 8 },
   rejectKeepBtn: {
     flex: 1, paddingVertical: 10, borderRadius: 8,
-    borderWidth: 1, borderColor: '#78350f', backgroundColor: '#fff', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.warnTintText, backgroundColor: '#fff', alignItems: 'center',
   },
-  rejectKeepText: { color: '#78350f', fontWeight: '700', fontSize: 13 },
+  rejectKeepText: { color: Colors.warnTintText, fontWeight: '700', fontSize: 13 },
   rejectCancelBtnInline: {
     flex: 1, paddingVertical: 10, borderRadius: 8,
     backgroundColor: Colors.error, alignItems: 'center',

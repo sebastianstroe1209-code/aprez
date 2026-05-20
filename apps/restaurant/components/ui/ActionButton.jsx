@@ -26,12 +26,12 @@ const DEFAULT_SUBTEXT_KEY = {
 
 const VARIANT_STYLES = {
   confirm:        'bg-primary text-white hover:bg-primary-dark',
-  reject:         'bg-red-600 text-white hover:bg-red-700',
-  seat:           'bg-blue-600 text-white hover:bg-blue-700',
+  reject:         'bg-action-danger text-white hover:bg-action-danger-hover',
+  seat:           'bg-action-info text-white hover:bg-action-info-hover',
   pickTable:      'bg-primary text-white hover:bg-primary-dark',
   reassignTable:  'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-300',
   cancel:         'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-300',
-  complete:       'bg-green-600 text-white hover:bg-green-700',
+  complete:       'bg-action-success text-white hover:bg-action-success-hover',
   edit:           'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-300',
   noshow:         'bg-orange-100 text-orange-900 hover:bg-orange-200 border border-orange-300',
   // Tier I commit 2 — Unmerge sits among the "edit-y" actions visually;
