@@ -6,6 +6,7 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "db:generate": "npx prisma generate",
+    "postinstall": "prisma generate",
     "db:migrate": "npx prisma migrate dev",
     "db:push": "npx prisma db push",
     "db:seed": "node prisma/seed.js",

@@ -19,7 +19,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.aprez.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "ApRez uses your location to find nearby restaurants."
+        "NSLocationWhenInUseUsageDescription": "ApRez uses your location to find nearby restaurants.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -34,12 +35,16 @@
       ]
     },
     "extra": {
-      "apiUrl": "http://localhost:4000"
+      "apiUrl": "http://localhost:4000",
+      "eas": {
+        "projectId": "0fb2ce20-4151-4a46-9ee5-efa6279bce18"
+      }
     },
     "plugins": [
       "expo-secure-store",
       "expo-font",
       "expo-notifications"
-    ]
+    ],
+    "owner": "sebastiancode1"
   }
 }
