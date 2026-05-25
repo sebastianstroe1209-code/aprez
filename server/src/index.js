@@ -10,11 +10,21 @@ const { PrismaClient } = require('@prisma/client');
 const app = express();
 // K2 — don't leak the framework in response headers.
 app.disable('x-powered-by');
-// K3 — trust the single proxy hop in front of us (Render's edge /
-// Cloudflare) so X-Forwarded-For yields real client IPs to
-// express-rate-limit. Bounded to 1 so a downstream attacker cannot
-// spoof additional hops. Off-Render this is a no-op (no XFF header).
-app.set('trust proxy', 1);
+// K3a — Render's free/starter chain is TWO hops: Cloudflare edge →
+// Render's internal load balancer → us. Pre-K3a `trust proxy: 1` only
+// trusted the LB hop, so req.ip resolved to the Cloudflare edge IP —
+// which VARIES per CF POP routing decision. Same real client hitting
+// us through different CF edges = different req.ip = different
+// rate-limit bucket key = limiter never accumulated, never 429'd.
+// Bumping to 2 lets Express walk past both hops and land on the real
+// client IP from the leftmost XFF entry. Verified live via
+// /api/__diag/ip: req.ip went from `104.x.x.x` (CF edge, drifting) to
+// the real client IP (stable).
+//
+// The rate limiter ALSO prefers `cf-connecting-ip` directly when
+// present (CF guarantees + strips spoofed inbound copies of it). See
+// middleware/rateLimiters.js for the keyGenerator.
+app.set('trust proxy', 2);
 const server = http.createServer(app);
 const prisma = new PrismaClient();
 
