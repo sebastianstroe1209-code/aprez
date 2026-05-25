@@ -445,7 +445,10 @@ router.get(
   [
     param('id').notEmpty().trim(),
     query('date').isISO8601(),
-    query('partySize').isInt({ min: 1 }),
+    // K7 — hard-cap partySize at 30 (the global rule; POST /reservations
+    // already enforces it). Pre-K7 a 99-person query returned 200 with a
+    // full schedule, wasting work and confusing clients.
+    query('partySize').isInt({ min: 1, max: 30 }),
   ],
   handleValidationErrors,
   async (req, res, next) => {
@@ -454,6 +457,26 @@ router.get(
       const userId = req.user.id;
       const { id } = req.params;
       const { date, partySize } = req.query;
+
+      // K8 — surface a structured 404 if the restaurant doesn't exist
+      // (pre-K8 the endpoint returned 200 with an empty schedule, which
+      // looks like "closed that day" — frontend integration risk).
+      const restaurantExists = await prisma.restaurant.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!restaurantExists) {
+        return res.status(404).json({ error: { code: 'restaurant-not-found' } });
+      }
+
+      // K8 — reject past dates. Pre-K8 returned a full schedule for any
+      // historical date — a UX trap where a user's stale back-stack
+      // could land on past slots and start a doomed booking.
+      const todayBucharest = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
+      const reqDateStr = String(date).slice(0, 10);
+      if (reqDateStr < todayBucharest) {
+        return res.status(400).json({ error: { code: 'date-in-past' } });
+      }
 
       // Check if user is banned
       const bannedRecord = await prisma.bannedUser.findFirst({

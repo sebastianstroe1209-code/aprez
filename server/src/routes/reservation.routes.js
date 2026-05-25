@@ -50,6 +50,17 @@ router.post(
       const userId = req.user.id;
       const { restaurantId, date, time, partySize, specialRequests } = req.body;
 
+      // K6 — reject past dates (Europe/Bucharest). The mobile picker
+      // gates this client-side, but the API took past dates pre-K6 →
+      // orphan rows with date='2025-01-01' from the audit. Defense
+      // in depth per SPEC §5.3 (future-only). Structured code so the
+      // client can localize.
+      const todayBucharest = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
+      const reqDateStr = String(date).slice(0, 10);
+      if (reqDateStr < todayBucharest) {
+        return res.status(400).json({ error: { code: 'date-in-past' } });
+      }
+
       // Check if user is banned
       const bannedRecord = await prisma.bannedUser.findFirst({
         where: { userId, restaurantId },
