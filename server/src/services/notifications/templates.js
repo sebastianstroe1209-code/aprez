@@ -81,8 +81,13 @@ const TEMPLATES = {
   [EVENTS.RESERVATION_REMINDER_45]: (ctx) => ({
     titleRo: 'Reamintire rezervare',
     titleEn: 'Reservation reminder',
-    bodyRo: `Rezervarea ta la ${restaurantName(ctx, 'ro')} este în 45 de minute. Vei ajunge?`,
-    bodyEn: `Your reservation at ${restaurantName(ctx, 'en')} is in 45 minutes. Will you make it?`,
+    // J2 launch-fix: simplified to informational copy (no question framing).
+    // Was "Vei ajunge?" / "Will you make it?" back when the push carried
+    // Yes/No action buttons (J1b). J2 dropped the buttons; tap on the
+    // notification opens the Reservations tab where the diner can cancel
+    // from the existing in-app flow if needed.
+    bodyRo: `Rezervarea ta la ${restaurantName(ctx, 'ro')} începe în 45 de minute. Te așteptăm!`,
+    bodyEn: `Your reservation at ${restaurantName(ctx, 'en')} starts in 45 minutes. See you soon!`,
   }),
 
   [EVENTS.RESERVATION_REQUEST_NEW]: (ctx) => ({

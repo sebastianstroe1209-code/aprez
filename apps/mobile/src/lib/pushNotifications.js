@@ -15,6 +15,12 @@ import * as SecureStore from 'expo-secure-store';
 import api from './api';
 import { navigateToReservations } from './navigationRef';
 
+// Dedup guard — getLastNotificationResponseAsync (cold-start path) and
+// addNotificationResponseReceivedListener (warm path) can BOTH fire for
+// the same tap if the OS replays the response after the listener mounts.
+// We remember the last-handled notification id so we don't double-navigate.
+let lastHandledNotificationId = null;
+
 // Foreground display — without this the 45-min reminder is silent when
 // the diner happens to have the app open. SPEC §5.7.
 Notifications.setNotificationHandler({
@@ -72,9 +78,29 @@ export async function registerPushToken() {
 // via the notification) navigates the diner to the Reservations tab.
 // They can cancel from there using the existing in-app flow if they
 // need to. Returns an unsubscribe fn for the caller's cleanup.
+//
+// J2 launch-fix #2: two paths handled here.
+//   1. Warm tap — app already running (foreground/background). The
+//      addNotificationResponseReceivedListener fires synchronously.
+//   2. Cold-start tap — phone locked, app not running, user taps the
+//      notification → iOS launches the app. The above listener does NOT
+//      fire for that initial tap because the JS engine starts AFTER the
+//      tap. Instead, we query getLastNotificationResponseAsync() once on
+//      mount; if it returns a response, the app was launched by a tap
+//      and we should navigate. Build 6 only handled path 1, which is
+//      why locked-screen taps landed on Home.
+function handleResponse(response) {
+  if (!response) return;
+  const id = response.notification?.request?.identifier || null;
+  if (id && id === lastHandledNotificationId) return; // dedup
+  lastHandledNotificationId = id;
+  navigateToReservations();
+}
+
 export function registerReminderResponseListener() {
-  const sub = Notifications.addNotificationResponseReceivedListener(() => {
-    navigateToReservations();
-  });
+  // Cold-start path: was the app launched by a notification tap?
+  Notifications.getLastNotificationResponseAsync().then(handleResponse).catch(() => {});
+  // Warm path: subscribe to future taps.
+  const sub = Notifications.addNotificationResponseReceivedListener(handleResponse);
   return () => sub.remove();
 }

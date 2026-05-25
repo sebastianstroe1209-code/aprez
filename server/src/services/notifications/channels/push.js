@@ -13,9 +13,11 @@ const ACCESS_TOKEN = process.env.EXPO_ACCESS_TOKEN || null;
 const TOKEN_PATTERN = /^Exp(onent)?PushToken\[[^\]]+\]$/;
 const { EVENTS } = require('../templates');
 
-// Notification category the mobile app (Tier J commit 1b) registered for
-// the 45-min reminder's Yes/No action buttons.
-const REMINDER_CATEGORY_ID = 'reservation-reminder';
+// J1b registered a `reservation-reminder` iOS category for Yes/No action
+// buttons on the 45-min reminder push. J2 dropped those buttons in favor
+// of a simpler tap-to-open-Reservations-tab flow, so the push no longer
+// carries a categoryId. Constant retained as a documentation breadcrumb.
+// const REMINDER_CATEGORY_ID = 'reservation-reminder';  // removed J2
 
 let warnedAboutMissingAccessToken = false;
 
@@ -39,13 +41,9 @@ function buildExpoMessage({ expoPushToken, content, lang, data, eventKey }) {
     sound: 'default',
   };
   if (data && typeof data === 'object') message.data = data;
-  // §5.7 / §10 event #7 — the 45-min reservation reminder is the only
-  // push with interactive actions; the mobile app registered a matching
-  // `reservation-reminder` category (J1b) for its Yes/No buttons. Every
-  // other event has no actions, so it carries no categoryId.
-  if (eventKey === EVENTS.RESERVATION_REMINDER_45) {
-    message.categoryId = REMINDER_CATEGORY_ID;
-  }
+  // J2 — no events carry a categoryId anymore. The 45-min reminder is
+  // now tap-to-open per pushNotifications.js's response handler; the
+  // in-app cancel flow handles the user's "I'm not coming" case.
   return message;
 }
 
