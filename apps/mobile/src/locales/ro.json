@@ -91,7 +91,11 @@
     "confirmAction": "Șterge definitiv",
     "cancel": "Anulează",
     "deleting": "Se șterge…",
-    "errorGeneric": "Nu am putut șterge contul. Încearcă din nou."
+    "errorGeneric": "Nu am putut șterge contul. Încearcă din nou.",
+    "passwordLabel": "Confirmă cu parola ta",
+    "passwordPlaceholder": "Parola contului",
+    "passwordRequired": "Introdu parola ca să confirmi ștergerea.",
+    "passwordIncorrect": "Parola este greșită."
   },
   "phonePrompt": {
     "headline": "Adaugi un număr de telefon?",

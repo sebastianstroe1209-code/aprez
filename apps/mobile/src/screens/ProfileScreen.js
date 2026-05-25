@@ -23,19 +23,28 @@ export default function ProfileScreen() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  // K5 — password re-auth before deletion.
+  const [deletePassword, setDeletePassword] = useState('');
 
   const handleDelete = async () => {
     if (deleting) return;
     setDeleteError('');
+    if (!deletePassword) {
+      setDeleteError(t('deleteAccount.passwordRequired'));
+      return;
+    }
     setDeleting(true);
-    const ok = await deleteAccount();
+    const result = await deleteAccount(deletePassword);
     setDeleting(false);
-    if (!ok) {
-      // AuthContext doesn't clear user on failure — keep the modal open
-      // and surface a generic error. (Server-side errors here are rare:
-      // the only path is a 401, which the middleware returns after a
-      // prior deletion — in which case "account already gone" is fine.)
-      setDeleteError(t('deleteAccount.errorGeneric'));
+    if (!result?.ok) {
+      // K5 — map the server's structured code to localized copy.
+      // 'password-required' shouldn't fire (we gate locally above), but
+      // handle it defensively. 'password-incorrect' is the common case
+      // when the diner types the wrong password.
+      const code = result?.code;
+      if (code === 'password-required') setDeleteError(t('deleteAccount.passwordRequired'));
+      else if (code === 'password-incorrect') setDeleteError(t('deleteAccount.passwordIncorrect'));
+      else setDeleteError(t('deleteAccount.errorGeneric'));
       return;
     }
     // On success the AuthContext sets user=null and AppNavigator bounces
@@ -245,6 +254,7 @@ export default function ProfileScreen() {
           style={styles.dangerBtn}
           onPress={() => {
             setDeleteError('');
+            setDeletePassword('');
             setShowDeleteModal(true);
           }}
         >
@@ -261,7 +271,12 @@ export default function ProfileScreen() {
       visible={showDeleteModal}
       animationType="fade"
       transparent
-      onRequestClose={() => { if (!deleting) setShowDeleteModal(false); }}
+      onRequestClose={() => {
+        if (deleting) return;
+        setShowDeleteModal(false);
+        setDeletePassword('');
+        setDeleteError('');
+      }}
     >
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
@@ -270,13 +285,31 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.modalTitle}>{t('deleteAccount.confirmTitle')}</Text>
           <Text style={styles.modalBody}>{t('deleteAccount.confirmBody')}</Text>
+          {/* K5 — inline password confirmation. */}
+          <Text style={styles.modalPasswordLabel}>{t('deleteAccount.passwordLabel')}</Text>
+          <TextInput
+            style={styles.modalPasswordInput}
+            value={deletePassword}
+            onChangeText={(v) => { setDeletePassword(v); if (deleteError) setDeleteError(''); }}
+            placeholder={t('deleteAccount.passwordPlaceholder')}
+            placeholderTextColor={Colors.textLight}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!deleting}
+          />
           {deleteError ? (
             <Text style={styles.modalError}>{deleteError}</Text>
           ) : null}
           <View style={styles.modalBtnRow}>
             <TouchableOpacity
               style={[styles.modalCancelBtn, deleting && { opacity: 0.5 }]}
-              onPress={() => { if (!deleting) setShowDeleteModal(false); }}
+              onPress={() => {
+                if (deleting) return;
+                setShowDeleteModal(false);
+                setDeletePassword('');
+                setDeleteError('');
+              }}
               disabled={deleting}
             >
               <Text style={styles.modalCancelText}>{t('deleteAccount.cancel')}</Text>
@@ -429,6 +462,19 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.text, marginBottom: 8, textAlign: 'center' },
   modalBody: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  // K5 — password re-auth input inside the confirm modal.
+  modalPasswordLabel: { alignSelf: 'flex-start', fontSize: 13, fontWeight: '600', color: Colors.text, marginBottom: 6 },
+  modalPasswordInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: Colors.text,
+    marginBottom: 12,
+  },
   modalError: { fontSize: 13, color: Colors.error, marginBottom: 12, textAlign: 'center' },
   modalBtnRow: { flexDirection: 'row', gap: 10, width: '100%' },
   modalCancelBtn: {

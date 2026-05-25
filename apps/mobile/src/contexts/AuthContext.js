@@ -133,17 +133,26 @@ export function AuthProvider({ children }) {
   // deletedAt, after which any further request with this token returns 401
   // 'account-deleted'. We clear local state immediately so the UI bounces
   // to the auth stack without waiting for the next 401.
-  const deleteAccount = async () => {
+  //
+  // K5 — server now requires password re-auth as a second factor (a
+  // stolen JWT alone can no longer wipe an account). Returns
+  // { ok:true } on success, { ok:false, code } on failure where `code`
+  // is the server's structured error.code ('password-required' /
+  // 'password-incorrect') or null (network / other). The caller maps
+  // the code to localized copy.
+  const deleteAccount = async (password) => {
     try {
       setError(null);
-      await api.delete('/users/me');
+      // axios DELETE with body uses `data` option, not the 2nd arg.
+      await api.delete('/users/me', { data: { password } });
       await SecureStore.deleteItemAsync('userToken').catch(() => {});
       resetSocket();
       setUser(null);
-      return true;
+      return { ok: true };
     } catch (e) {
+      const code = e?.response?.data?.error?.code || null;
       setError(getErrorMessage(e));
-      return false;
+      return { ok: false, code };
     }
   };
 

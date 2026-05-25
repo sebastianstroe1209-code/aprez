@@ -112,7 +112,8 @@ async function main() {
   const token = login.body?.token;
   expect(!!token, `login → token`);
 
-  const del = await http('DELETE', '/users/me', token, null);
+  // K5 — DELETE /users/me now requires { password } in the body.
+  const del = await http('DELETE', '/users/me', token, { password: TEST_PASSWORD });
   expect(del.status === 200, `DELETE /users/me → 200 (got ${del.status})`);
 
   console.log('\n[c] CONFIRMED row: status=CANCELLED + cancelledBy=system + cancelledAt recent + PII wiped');

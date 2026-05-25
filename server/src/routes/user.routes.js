@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { authenticateUser } = require('../middleware/auth');
 const { ROMANIAN_PHONE_RE, PHONE_FORMAT_MSG, phoneFormatErrorBody } = require('../lib/phoneValidation');
@@ -223,14 +224,31 @@ router.post('/me/phone-prompt-seen', authenticateUser, async (req, res, next) =>
 // trail stays intact without identifying the diner. We do NOT cascade-
 // delete reservations: bookings already honored matter for the restaurant
 // billing report and the diner's old confirmation emails reference them.
+//
+// K5 — requires password re-entry as a second factor. A stolen JWT alone
+// (e.g. lost device, XSS) can no longer wipe an account in one request.
+// Request body: { password: '...' }.
+// Returns:
+//   403 { error: { code: 'password-required'  } } if password missing.
+//   403 { error: { code: 'password-incorrect' } } if password wrong.
+// Phone-only users (no passwordHash) currently can't delete via this
+// path — the only way to set a password is the diner forgot-password
+// flow, which already exists. Acceptable MVP edge case (every diner
+// who registers via the mobile app has a password — schema-allowed
+// phone-only-no-password rows haven't been a live path).
 router.delete('/me', authenticateUser, async (req, res, next) => {
   try {
     const prisma = req.app.get('prisma');
     const userId = req.user.id;
 
+    const password = req.body?.password;
+    if (typeof password !== 'string' || password.length === 0) {
+      return res.status(403).json({ error: { code: 'password-required' } });
+    }
+
     const existing = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, firstName: true, lastName: true, deletedAt: true },
+      select: { id: true, firstName: true, lastName: true, deletedAt: true, passwordHash: true },
     });
     if (!existing) {
       return res.status(404).json({ error: { message: 'User not found' } });
@@ -239,6 +257,18 @@ router.delete('/me', authenticateUser, async (req, res, next) => {
       // Idempotent: a second DELETE on an already-deleted account is a
       // no-op rather than an error so a duplicate tap doesn't 500.
       return res.json({ message: 'Account already deleted.' });
+    }
+
+    // K5 — bcrypt verify before any destructive write. Treat a missing
+    // passwordHash (phone-only registration) as 'password-incorrect' —
+    // bcrypt.compare returns false and the user gets the same code as
+    // a wrong password (we deliberately don't leak whether the password
+    // is unset vs wrong).
+    const passwordOk = existing.passwordHash
+      ? await bcrypt.compare(password, existing.passwordHash)
+      : false;
+    if (!passwordOk) {
+      return res.status(403).json({ error: { code: 'password-incorrect' } });
     }
 
     const displayName = `${existing.firstName || ''} ${existing.lastName || ''}`.trim() || '[deleted account]';

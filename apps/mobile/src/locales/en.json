@@ -91,7 +91,11 @@
     "confirmAction": "Delete forever",
     "cancel": "Cancel",
     "deleting": "Deleting…",
-    "errorGeneric": "Couldn't delete your account. Try again."
+    "errorGeneric": "Couldn't delete your account. Try again.",
+    "passwordLabel": "Confirm with your password",
+    "passwordPlaceholder": "Account password",
+    "passwordRequired": "Type your password to confirm deletion.",
+    "passwordIncorrect": "That password is incorrect."
   },
   "phonePrompt": {
     "headline": "Add a phone number?",
