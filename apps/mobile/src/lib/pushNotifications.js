@@ -59,11 +59,15 @@ export async function registerPushToken() {
     const token = tokenResp?.data;
     if (!token) return;
 
-    // Only POST when the token differs from what we last uploaded —
-    // covers token rotation without a needless request every launch.
-    const cached = await SecureStore.getItemAsync(TOKEN_CACHE_KEY).catch(() => null);
-    if (cached === token) return;
-
+    // J3 launch-fix: dropped the SecureStore cache short-circuit. The cache
+    // was per-device, not per-user — when User A logged out and User B
+    // logged in on the same device, the cache hit prevented B's token from
+    // ever uploading to B's record. The cost of always-POSTing is one
+    // small HTTP request per login/cold-start; backend stores the same
+    // value idempotently (no-op on equal token). Worth it for correctness.
+    // (Logout now also clears this key in AuthContext.logout — keeping the
+    // setItem write here as a no-op for forward compatibility if we ever
+    // want to re-introduce a smarter, userId-keyed cache.)
     await api.put('/users/me/push-token', { expoPushToken: token });
     await SecureStore.setItemAsync(TOKEN_CACHE_KEY, token).catch(() => {});
   } catch (e) {

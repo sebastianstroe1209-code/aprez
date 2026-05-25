@@ -90,6 +90,12 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     await SecureStore.deleteItemAsync('userToken').catch(() => {});
+    // J3 launch-fix: also clear the push-token cache so the next login
+    // (potentially a different user on the same device) re-uploads its
+    // token to the new user record. iOS Keychain items survive app
+    // uninstall, so without this a stale cache from a previous user can
+    // prevent the new user from ever getting a push token registered.
+    await SecureStore.deleteItemAsync('aprez.expoPushToken').catch(() => {});
     resetSocket();
     setUser(null);
   };
