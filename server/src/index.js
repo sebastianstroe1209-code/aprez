@@ -62,16 +62,16 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Tier K3 follow-up — temporary diagnostic to figure out what req.ip
-// actually resolves to behind Cloudflare + Render. Sebastian's live
-// rate-limit verification found 7 wrong-password POSTs all returned
-// 401, never 429. Need real data on what `trust proxy` is yielding
-// before deciding whether to bump it, switch to a CF-Connecting-IP
-// keyGenerator, etc. Returns the request's resolved IP + the raw
-// headers Express used to derive it. SAFE to leave on production
-// briefly — it leaks no secrets, only your own IP back at you and
-// the headers your own client sent.
+// Tier K3a — proxy / IP diagnostic. Surfaced the bug where req.ip
+// was resolving to Cloudflare's edge (rotating per POP) instead of the
+// real client. Re-gated to dev-only after the K3a fix landed; kept
+// for future debugging since it leaks no secrets (only your own IP +
+// the headers your client sent) and the cost of keeping it is one
+// route definition. Returns 404 in production.
 app.get('/api/__diag/ip', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: { code: 'not-found' } });
+  }
   res.json({
     reqIp: req.ip,
     reqIps: req.ips,
