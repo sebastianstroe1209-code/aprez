@@ -5,6 +5,11 @@ const { body, validationResult } = require('express-validator');
 const { generateToken } = require('../middleware/auth');
 const { sendEmail } = require('../services/notifications/channels/email');
 const { ROMANIAN_PHONE_RE, PHONE_FORMAT_MSG, phoneFormatErrorBody } = require('../lib/phoneValidation');
+const {
+  loginLimiter,
+  forgotPasswordIpLimiter,
+  forgotPasswordEmailLimiter,
+} = require('../middleware/rateLimiters');
 
 const router = express.Router();
 
@@ -117,7 +122,7 @@ router.post('/register', [
 // ============================================
 // USER LOGIN (Email + Password)
 // ============================================
-router.post('/login', [
+router.post('/login', loginLimiter, [
   body('email').isEmail(),
   body('password').notEmpty(),
 ], async (req, res, next) => {
@@ -157,7 +162,7 @@ router.post('/login', [
 // ============================================
 // RESTAURANT STAFF LOGIN
 // ============================================
-router.post('/restaurant/login', [
+router.post('/restaurant/login', loginLimiter, [
   body('username').trim().notEmpty().withMessage('Username is required'),
   body('password').notEmpty().withMessage('Password is required'),
 ], async (req, res, next) => {
@@ -215,7 +220,7 @@ router.post('/restaurant/login', [
 // exists. The actual email recipient is RestaurantStaff.email (admin-
 // set per §6.8) with a fallback to the restaurant's contact email.
 // ============================================
-router.post('/restaurant/forgot-password', [
+router.post('/restaurant/forgot-password', forgotPasswordIpLimiter, forgotPasswordEmailLimiter, [
   body('usernameOrEmail').trim().notEmpty().withMessage('Username or email is required'),
 ], async (req, res, next) => {
   try {
@@ -356,7 +361,7 @@ router.post('/restaurant/reset-password', [
 // regardless of whether the email exists. We skip the send if the matched
 // user has no password set (i.e. registered phone-only) or is soft-deleted.
 // ============================================
-router.post('/diner/forgot-password', [
+router.post('/diner/forgot-password', forgotPasswordIpLimiter, forgotPasswordEmailLimiter, [
   body('email').trim().notEmpty().withMessage('Email is required').isEmail().withMessage('Invalid email'),
 ], async (req, res, next) => {
   try {
@@ -493,7 +498,7 @@ router.post('/diner/reset-password', [
 // ============================================
 // ADMIN LOGIN
 // ============================================
-router.post('/admin/login', [
+router.post('/admin/login', loginLimiter, [
   body('email').isEmail().withMessage('Valid email is required'),
   body('password').notEmpty().withMessage('Password is required'),
 ], async (req, res, next) => {

@@ -10,6 +10,11 @@ const { PrismaClient } = require('@prisma/client');
 const app = express();
 // K2 — don't leak the framework in response headers.
 app.disable('x-powered-by');
+// K3 — trust the single proxy hop in front of us (Render's edge /
+// Cloudflare) so X-Forwarded-For yields real client IPs to
+// express-rate-limit. Bounded to 1 so a downstream attacker cannot
+// spoof additional hops. Off-Render this is a no-op (no XFF header).
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const prisma = new PrismaClient();
 
@@ -46,6 +51,19 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Dev/test-only rate-limit reset. Returns 404 in production so it's a
+// no-op in the live environment; the K3 smoke calls it at startup so
+// re-running within an hour doesn't trip the per-IP forgot-password
+// bucket from the previous run.
+app.post('/api/__test/reset-rate-limits', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: { code: 'not-found' } });
+  }
+  const { resetAllLimitersForTests } = require('./middleware/rateLimiters');
+  await resetAllLimitersForTests();
+  res.json({ ok: true });
+});
 
 // Health check — also serves as a deploy diagnostic. On Render the
 // RENDER_GIT_COMMIT env var is injected at build time; locally it's
