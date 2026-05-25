@@ -74,6 +74,9 @@ app.get('/api/__diag/ip', (req, res) => {
     },
     trustProxy: app.get('trust proxy'),
     nodeEnv: process.env.NODE_ENV || 'development',
+    renderInstanceId: process.env.RENDER_INSTANCE_ID || null,
+    pid: process.pid,
+    procUptimeSec: Math.floor(process.uptime()),
   });
 });
 
