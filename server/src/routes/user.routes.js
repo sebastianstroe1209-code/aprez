@@ -247,6 +247,13 @@ router.delete('/me', authenticateUser, async (req, res, next) => {
     // sentinels so the restaurant's view shows "[deleted account]" rather
     // than an empty cell. Match the convention used elsewhere when staff
     // anonymize cancelled walk-ins.
+    //
+    // K10 — also cancel every non-terminal reservation atomically. Pre-K10
+    // the PII was wiped but `status` stayed PENDING/CONFIRMED/AUTO_CONFIRMED,
+    // leaving the restaurant with a ghost row they couldn't call/cancel.
+    // cancelledBy='system' distinguishes deletion-cancellations from
+    // diner-initiated ('user') and restaurant-initiated ('restaurant').
+    const now = new Date();
     await prisma.$transaction([
       prisma.reservation.updateMany({
         where: { userId },
@@ -254,6 +261,17 @@ router.delete('/me', authenticateUser, async (req, res, next) => {
           guestName: '[deleted account]',
           guestPhone: null,
           guestEmail: null,
+        },
+      }),
+      prisma.reservation.updateMany({
+        where: {
+          userId,
+          status: { in: ['PENDING', 'CONFIRMED', 'AUTO_CONFIRMED'] },
+        },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: now,
+          cancelledBy: 'system',
         },
       }),
       // Soft-delete: keep the row so FKs from Reservation/Favorite/etc.
