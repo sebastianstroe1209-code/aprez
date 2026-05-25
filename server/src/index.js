@@ -1,12 +1,15 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const http = require('http');
 const { Server } = require('socket.io');
 const { PrismaClient } = require('@prisma/client');
 
 // Initialize
 const app = express();
+// K2 — don't leak the framework in response headers.
+app.disable('x-powered-by');
 const server = http.createServer(app);
 const prisma = new PrismaClient();
 
@@ -27,6 +30,12 @@ app.set('prisma', prisma);
 app.set('io', io);
 
 // Middleware
+// K2 — helmet ships sensible defaults for HSTS, X-Frame-Options,
+// X-Content-Type-Options, Referrer-Policy, etc. CSP is DISABLED for
+// now — we haven't audited inline scripts on the Next.js apps or the
+// uploaded photo paths; turning CSP on without an audit would break
+// production pages. Re-enable in a later tier after a CSP audit.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
   origin: [
     process.env.CLIENT_URL || 'http://localhost:3000',
