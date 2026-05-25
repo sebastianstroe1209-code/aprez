@@ -67,7 +67,7 @@ async function main() {
       status: { in: ['CONFIRMED', 'AUTO_CONFIRMED'] },
     },
     orderBy: { createdAt: 'desc' },
-    include: { restaurant: { select: { nameRo: true, nameEn: true } } },
+    include: { restaurant: { select: { nameRo: true, nameEn: true, reservationDurationMin: true } } },
   });
   if (!reservation) {
     throw new Error(
@@ -88,11 +88,21 @@ async function main() {
   const { date: targetDate, time: targetTime } = bucharestParts(target);
   console.log(`[target] new date=${targetDate} time=${targetTime} (Bucharest)`);
 
+  // K9 fix: recompute endTime in lockstep with time. Pre-K9 this script
+  // shifted `time` without updating `endTime`, leaving rows like
+  // time=00:29 endTime=21:00 in the DB — invariant-breaking and the
+  // source of the K9 audit finding.
+  const duration = reservation.restaurant?.reservationDurationMin || 120;
+  const [tH, tM] = targetTime.split(':').map(Number);
+  const endMin = (tH * 60 + tM + duration);
+  const targetEndTime = `${String(Math.floor(endMin / 60) % 24).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+
   await prisma.reservation.update({
     where: { id: reservation.id },
     data: {
       date: new Date(`${targetDate}T00:00:00.000Z`),
       time: targetTime,
+      endTime: targetEndTime,
       reminderSentAt: null,
     },
   });
