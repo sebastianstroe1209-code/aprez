@@ -132,13 +132,42 @@ async function runReservationPrune() {
 runReservationPrune();
 setInterval(runReservationPrune, PRUNE_INTERVAL_MS);
 
-// Error handling middleware
+// Error handling middleware — K1 sanitizer.
+//
+// Pre-K1, an unhandled Prisma error returned 500 with `err.message`
+// echoed in the response body. Prisma's validation error messages
+// include the full UserWhereInput schema (column names like
+// passwordHash, expoPushToken, deletedAt) — a free schema dump for
+// attackers. Now: production NEVER echoes Prisma details or stack
+// traces; dev keeps the verbose form for fast debugging.
 app.use((err, req, res, next) => {
-  console.error('Error:', err.message);
-  res.status(err.status || 500).json({
+  // Always log server-side — this is our only visibility.
+  console.error('[error]', req.method, req.originalUrl, '-', err.name || 'Error', '-', err.message);
+  if (err.stack) console.error(err.stack);
+
+  const isProd = process.env.NODE_ENV === 'production';
+  const isPrismaError = typeof err.name === 'string' && err.name.startsWith('PrismaClient');
+  const status = err.status || 500;
+
+  if (isProd) {
+    // Production: any 5xx or Prisma error → generic. Curated 4xx
+    // messages (set via err.status + err.message in a route) still
+    // surface so the client can localize / display them.
+    if (isPrismaError || status >= 500) {
+      return res.status(500).json({
+        error: { code: 'server-error', message: 'Something went wrong. Please try again.' },
+      });
+    }
+    return res.status(status).json({
+      error: { message: err.message || 'Bad request' },
+    });
+  }
+
+  // Dev: keep the verbose form.
+  res.status(status).json({
     error: {
       message: err.message || 'Internal server error',
-      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+      stack: err.stack,
     },
   });
 });

@@ -123,10 +123,17 @@ router.post('/register', [
 // USER LOGIN (Email + Password)
 // ============================================
 router.post('/login', loginLimiter, [
-  body('email').isEmail(),
-  body('password').notEmpty(),
+  body('email').exists().withMessage('Email is required').bail().isEmail().withMessage('Invalid email'),
+  body('password').exists().withMessage('Password is required').bail().notEmpty().withMessage('Password is required'),
 ], async (req, res, next) => {
   try {
+    // K1 — pre-fix, an empty/malformed body fell through to Prisma with
+    // `email: undefined`, dumping the entire UserWhereInput schema in
+    // the 500 response. Validators were declared but never checked.
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: { message: errors.array()[0].msg } });
+    }
     const prisma = req.app.get('prisma');
     const { email, password } = req.body;
 
