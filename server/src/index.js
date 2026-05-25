@@ -52,6 +52,31 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Tier K3 follow-up — temporary diagnostic to figure out what req.ip
+// actually resolves to behind Cloudflare + Render. Sebastian's live
+// rate-limit verification found 7 wrong-password POSTs all returned
+// 401, never 429. Need real data on what `trust proxy` is yielding
+// before deciding whether to bump it, switch to a CF-Connecting-IP
+// keyGenerator, etc. Returns the request's resolved IP + the raw
+// headers Express used to derive it. SAFE to leave on production
+// briefly — it leaks no secrets, only your own IP back at you and
+// the headers your own client sent.
+app.get('/api/__diag/ip', (req, res) => {
+  res.json({
+    reqIp: req.ip,
+    reqIps: req.ips,
+    socketRemote: req.socket?.remoteAddress,
+    headers: {
+      'x-forwarded-for': req.headers['x-forwarded-for'] || null,
+      'cf-connecting-ip': req.headers['cf-connecting-ip'] || null,
+      'x-real-ip': req.headers['x-real-ip'] || null,
+      'x-forwarded-proto': req.headers['x-forwarded-proto'] || null,
+    },
+    trustProxy: app.get('trust proxy'),
+    nodeEnv: process.env.NODE_ENV || 'development',
+  });
+});
+
 // Dev/test-only rate-limit reset. Returns 404 in production so it's a
 // no-op in the live environment; the K3 smoke calls it at startup so
 // re-running within an hour doesn't trip the per-IP forgot-password
