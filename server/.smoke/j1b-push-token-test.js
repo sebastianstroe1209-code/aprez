@@ -90,11 +90,16 @@ async function main() {
   });
   expect(f !== null && f !== undefined, `transport executed — non-null result (got ${JSON.stringify(f)?.slice(0, 80)})`);
 
-  console.log('\n[g] J1c — buildExpoMessage attaches categoryId only for the 45-min reminder');
+  console.log('\n[g] J2 — no event carries a categoryId (action buttons dropped, tap-to-open Reservations tab)');
+  // J1c attached a `reservation-reminder` categoryId on the 45-min reminder so iOS
+  // would render Yes/No action buttons. J2 reverted that — the reminder is now
+  // tap-to-open per pushNotifications.js's response handler; the in-app cancel
+  // flow handles "I'm not coming". The constant is preserved as a comment in
+  // channels/push.js but no event sets it on the message anymore.
   const reminderMsg = buildExpoMessage({
     expoPushToken: TOKEN_1, content: CONTENT, lang: 'en', eventKey: EVENTS.RESERVATION_REMINDER_45,
   });
-  expect(reminderMsg.categoryId === 'reservation-reminder', `45-min reminder push carries categoryId (got ${JSON.stringify(reminderMsg.categoryId)})`);
+  expect(reminderMsg.categoryId === undefined, `45-min reminder push carries NO categoryId (got ${JSON.stringify(reminderMsg.categoryId)})`);
   const confirmMsg = buildExpoMessage({
     expoPushToken: TOKEN_1, content: CONTENT, lang: 'en', eventKey: EVENTS.RESERVATION_CONFIRMED,
   });

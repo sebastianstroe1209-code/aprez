@@ -38,9 +38,21 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check
+// Health check — also serves as a deploy diagnostic. On Render the
+// RENDER_GIT_COMMIT env var is injected at build time; locally it's
+// unset so `commit` reports 'local'. Lets us curl the live URL and
+// instantly verify which SHA is serving (was: blind faith that the
+// auto-deploy fired). See memory/tier_k_findings.md K0.
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const commit = process.env.RENDER_GIT_COMMIT
+    ? process.env.RENDER_GIT_COMMIT.slice(0, 7)
+    : 'local';
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    commit,
+    env: process.env.NODE_ENV || 'development',
+  });
 });
 
 // Routes
