@@ -11,9 +11,9 @@ import {
 } from 'react-native';
 import { Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker } from 'react-native-maps';
 import { Colors } from '../lib/colors';
 import api, { mediaUrl } from '../lib/api';
+import RestaurantMap from '../components/RestaurantMap';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -174,20 +174,12 @@ export default function RestaurantDetailScreen({ route, navigation }) {
             on both iOS and Android without an API key. */}
         {hasCoords && (
           <View style={styles.mapSection}>
-            <MapView
+            <RestaurantMap
+              latitude={lat}
+              longitude={lng}
+              title={r.nameEn || r.nameRo}
               style={styles.map}
-              initialRegion={{
-                latitude: lat,
-                longitude: lng,
-                latitudeDelta: 0.012,
-                longitudeDelta: 0.012,
-              }}
-            >
-              <Marker
-                coordinate={{ latitude: lat, longitude: lng }}
-                title={r.nameEn || r.nameRo}
-              />
-            </MapView>
+            />
           </View>
         )}
 
